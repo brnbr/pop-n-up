@@ -9,7 +9,7 @@ import java.util.List;
 
 public interface PopupRepository extends JpaRepository<Popup, Long> {
 
-    List<Popup> findByRegion(String region);
+    List<Popup> findByRegionContaining(String region);
 
     List<Popup> findByCategory(PopupCategory category);
 

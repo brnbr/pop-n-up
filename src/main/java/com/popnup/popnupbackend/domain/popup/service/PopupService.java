@@ -75,7 +75,7 @@ public class PopupService {
         if (condition.getKeyword() != null && !condition.getKeyword().isBlank()) {
             popups = popupRepository.findByTitleContaining(condition.getKeyword().trim());
         } else if (condition.getRegion() != null && !condition.getRegion().isBlank()) {
-            popups = popupRepository.findByRegion(condition.getRegion().trim());
+            popups = popupRepository.findByRegionContaining(condition.getRegion().trim());
         } else if (condition.getCategory() != null) {
             popups = popupRepository.findByCategory(condition.getCategory());
         } else if (condition.getStatus() != null) {
