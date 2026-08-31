@@ -12,25 +12,25 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@RequiredArgsConstructor
 @RestController
+@RequiredArgsConstructor
 public class ScheduleController {
 
   private final ScheduleService scheduleService;
 
   // 사용자 - 특정 팝업의 날짜별 스케쥴 목록 조회
-  @GetMapping("popups/{popupId}/schedules")
-  public ResponseEntity<List<ScheduleResponse>> getSchedules(
-      @PathVariable Long popupId,
-      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+  @GetMapping("/popups/{popupId}/schedules")
+  public ResponseEntity<ApiResponse<List<ScheduleResponse>>> getSchedules(
+          @PathVariable Long popupId,
+          @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
     List<ScheduleResponse> responses = scheduleService.getScheduleByDate(popupId, date);
-    return ResponseEntity.ok(responses);
+    return ResponseEntity.ok(ApiResponse.success("스케줄 목록 조회 성공", responses));
   }
 
-  // 스케줄 단 건 등록
+  // 스케줄 단건 등록
   @PostMapping("/admin/schedules")
   public ResponseEntity<ApiResponse<Long>> createSchedule(
-      @Valid @RequestBody ScheduleCreateRequest request) {
+          @Valid @RequestBody ScheduleCreateRequest request) {
     Long scheduleId = scheduleService.createSchedule(request);
     return ResponseEntity.ok(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
   }
@@ -38,12 +38,12 @@ public class ScheduleController {
   // 타임 슬롯 활성화/비활성화 상태 변경
   @PatchMapping("/admin/schedules/{scheduleId}/status")
   public ResponseEntity<ApiResponse<Void>> updateScheduleStatus(
-      @PathVariable Long scheduleId, @RequestParam boolean isActive) {
+          @PathVariable Long scheduleId, @RequestParam boolean isActive) {
     scheduleService.updateScheduleStatus(scheduleId, isActive);
     return ResponseEntity.ok(ApiResponse.success("스케줄 상태가 변경되었습니다.", null));
   }
 
-  // 스케쥴 삭제
+  // 스케줄 삭제
   @DeleteMapping("/admin/schedules/{scheduleId}")
   public ResponseEntity<ApiResponse<Void>> deleteSchedule(@PathVariable Long scheduleId) {
     scheduleService.deleteSchedule(scheduleId);
