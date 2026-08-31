@@ -21,7 +21,7 @@ public class ScheduleResponse {
   private final boolean isAvailable;        // 예약 가능 여부 (여석 존재 + 예약 슬롯 활성화 O)
 
   public static ScheduleResponse from(Schedule schedule) {
-    int remaining = schedule.getMaxCapacity() - schedule.getNowCapacity();
+    int remaining = Math.max(0, schedule.getMaxCapacity() - schedule.getNowCapacity());
     boolean available = schedule.isActive() && remaining > 0;
 
     return new ScheduleResponse(
