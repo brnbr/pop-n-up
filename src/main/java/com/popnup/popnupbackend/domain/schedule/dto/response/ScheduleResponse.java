@@ -15,14 +15,14 @@ public class ScheduleResponse {
   private final LocalTime startTime;
   private final LocalTime endTime;
   private final Integer maxCapacity;
-  private final Integer nowcapacity;
-  private final Integer remainingCapacity; // 잔여석 개수
-  private final boolean isActive; // 예약 슬롯 활성화 여부
-  private final boolean isAvailable; // 예약 가능 여부 (여석 존재 + 예약 슬롯 활성화 O)
+  private final Integer nowCapacity;
+  private final Integer remainingCapacity;  // 잔여석 개수
+  private final boolean isActive;           // 예약 슬롯 활성화 여부
+  private final boolean isAvailable;        // 예약 가능 여부 (여석 존재 + 예약 슬롯 활성화 O)
 
   public static ScheduleResponse from(Schedule schedule) {
     int remaining = schedule.getMaxCapacity() - schedule.getNowCapacity();
-    boolean availiable = schedule.isActive() && remaining > 0;
+    boolean available = schedule.isActive() && remaining > 0;
 
     return new ScheduleResponse(
         schedule.getId(),
@@ -33,6 +33,7 @@ public class ScheduleResponse {
         schedule.getNowCapacity(),
         remaining,
         schedule.isActive(),
-        availiable);
+        available
+    );
   }
 }
