@@ -11,5 +11,5 @@ public class ScheduleCreateRequest {
   private LocalDate scheduleDate;
   private LocalTime startTime;
   private LocalTime endTime;
-  private Integer maxCapacicy;
+  private Integer maxCapacity;
 }
