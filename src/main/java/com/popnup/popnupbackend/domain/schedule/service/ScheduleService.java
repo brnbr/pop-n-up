@@ -24,7 +24,6 @@ public class ScheduleService {
     @Transactional(readOnly = true)
     public List<ScheduleResponse> getScheduleByDate(Long popupId, LocalDate date) {
         List<Schedule> schedules = scheduleRepository.findActiveSchedulesByDate(popupId, date);
-
         return schedules.stream().map(ScheduleResponse::from).toList();
     }
 
@@ -55,7 +54,7 @@ public class ScheduleService {
 
     @Transactional
     public void deleteSchedule(Long scheduleId) {
-        Schedule schedule = scheduleRepository.findById(scheduleId).orElseThrow(() -> new IllegalArgumentException("존재하지 않는 스케쥴입니다."));
+        Schedule schedule = scheduleRepository.findById(scheduleId).orElseThrow(() -> new IllegalArgumentException("존재하지 않는 스케줄입니다."));
 
         if (schedule.getNowCapacity() > 0) {
             throw new IllegalStateException("이미 예약자가 존재하는 스케줄은 삭제할 수 없습니다.");
