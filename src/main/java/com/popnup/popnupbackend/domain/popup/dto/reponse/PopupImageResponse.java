@@ -8,25 +8,25 @@ import lombok.Getter;
 @Getter
 public class PopupImageResponse {
 
-    private final Long id;
-    private final String imageUrl;
-    private final ImageType imageType;
-    private final Integer sortOrder;
+  private final Long id;
+  private final String imageUrl;
+  private final ImageType imageType;
+  private final Integer sortOrder;
 
-    @Builder
-    public PopupImageResponse(Long id, String imageUrl, ImageType imageType, Integer sortOrder) {
-        this.id = id;
-        this.imageUrl = imageUrl;
-        this.imageType = imageType;
-        this.sortOrder = sortOrder;
-    }
+  @Builder
+  public PopupImageResponse(Long id, String imageUrl, ImageType imageType, Integer sortOrder) {
+    this.id = id;
+    this.imageUrl = imageUrl;
+    this.imageType = imageType;
+    this.sortOrder = sortOrder;
+  }
 
-    public static PopupImageResponse from(PopupImage popupImage) {
-        return PopupImageResponse.builder()
-                .id(popupImage.getId())
-                .imageUrl(popupImage.getImageUrl())
-                .imageType(popupImage.getImageType())
-                .sortOrder(popupImage.getSortOrder())
-                .build();
-    }
+  public static PopupImageResponse from(PopupImage popupImage) {
+    return PopupImageResponse.builder()
+        .id(popupImage.getId())
+        .imageUrl(popupImage.getImageUrl())
+        .imageType(popupImage.getImageType())
+        .sortOrder(popupImage.getSortOrder())
+        .build();
+  }
 }

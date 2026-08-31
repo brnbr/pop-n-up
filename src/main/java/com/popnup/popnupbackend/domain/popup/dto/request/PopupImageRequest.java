@@ -11,18 +11,18 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class PopupImageRequest {
 
-    @NotBlank(message = "이미지 URL은 필수입니다.")
-    private String imageUrl;
+  @NotBlank(message = "이미지 URL은 필수입니다.")
+  private String imageUrl;
 
-    @NotNull(message = "이미지 유형은 필수입니다.")
-    private ImageType imageType;
+  @NotNull(message = "이미지 유형은 필수입니다.")
+  private ImageType imageType;
 
-    private Integer sortOrder = 0;
+  private Integer sortOrder = 0;
 
-    @Builder
-    public PopupImageRequest(String imageUrl, ImageType imageType, Integer sortOrder) {
-        this.imageUrl = imageUrl;
-        this.imageType = imageType;
-        this.sortOrder = sortOrder != null ? sortOrder : 0;
-    }
+  @Builder
+  public PopupImageRequest(String imageUrl, ImageType imageType, Integer sortOrder) {
+    this.imageUrl = imageUrl;
+    this.imageType = imageType;
+    this.sortOrder = sortOrder != null ? sortOrder : 0;
+  }
 }

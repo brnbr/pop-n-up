@@ -9,8 +9,8 @@ import lombok.Setter;
 @Setter
 public class PopupSearchCondition {
 
-    private String keyword;
-    private String region;
-    private PopupCategory category;
-    private PopupStatus status;
+  private String keyword;
+  private String region;
+  private PopupCategory category;
+  private PopupStatus status;
 }
