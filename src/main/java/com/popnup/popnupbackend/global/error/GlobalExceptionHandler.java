@@ -12,7 +12,8 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiResponse<Void>> handleServiceException(ServiceException ex) {
     ErrorCode errorCode = ex.getErrorCode();
 
-    return ResponseEntity.status(errorCode.getHttpStatus())
-        .body(ApiResponse.fail(errorCode.name(), errorCode.getMessage()));
+    return ResponseEntity
+            .status(errorCode.getHttpStatus())
+            .body(ApiResponse.fail(errorCode.name(), errorCode.getMessage()));
   }
 }
