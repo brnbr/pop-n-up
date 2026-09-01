@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,7 +19,7 @@ public class ScheduleController {
 
   private final ScheduleService scheduleService;
 
-  // 사용자 - 특정 팝업의 날짜별 스케쥴 목록 조회
+  // 사용자 - 특정 팝업의 날짜별 스케줄 목록 조회
   @GetMapping("/popups/{popupId}/schedules")
   public ResponseEntity<ApiResponse<List<ScheduleResponse>>> getSchedules(
           @PathVariable Long popupId,
@@ -32,7 +33,9 @@ public class ScheduleController {
   public ResponseEntity<ApiResponse<Long>> createSchedule(
           @Valid @RequestBody ScheduleCreateRequest request) {
     Long scheduleId = scheduleService.createSchedule(request);
-    return ResponseEntity.ok(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
+    return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
   }
 
   // 타임 슬롯 활성화/비활성화 상태 변경
