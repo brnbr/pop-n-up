@@ -10,8 +10,9 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(ServiceException.class)
   public ResponseEntity<ApiResponse<Void>> handleServiceException(ServiceException ex) {
+    ErrorCode errorCode = ex.getErrorCode();
 
-    return ResponseEntity.status(ex.getStatus())
-        .body(ApiResponse.fail(String.valueOf(ex.getStatus().value()), ex.getMessage()));
+    return ResponseEntity.status(errorCode.getHttpStatus())
+        .body(ApiResponse.fail(errorCode.name(), errorCode.getMessage()));
   }
 }
