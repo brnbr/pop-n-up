@@ -1,5 +1,6 @@
 package com.popnup.popnupbackend.domain.schedule.entity;
 
+import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import java.time.LocalDate;
@@ -61,25 +62,14 @@ public class Schedule extends BaseEntity {
       LocalDate scheduleDate,
       LocalTime startTime,
       LocalTime endTime,
-      Integer maxCapacity) {
-    if (popup == null) {
-      throw new IllegalArgumentException("스케쥴 등록을 위한 팝업 정보는 필수입니다.");
-    }
-
-    if (scheduleDate == null) {
-      throw new IllegalArgumentException("스케쥴 날짜는 필수입니다.");
-    }
-
-    if (startTime == null || endTime == null) {
-      throw new IllegalArgumentException("시작 시간과 종료 시간은 필수입니다.");
-    }
-
+      Integer maxCapacity)
+  {
     if (maxCapacity == null || maxCapacity <= 0) {
-      throw new IllegalArgumentException("최대 수용 인원은 1명 이상이어야 합니다.");
+      throw ScheduleErrorCode.INVALID_CAPACITY.toException();
     }
 
     if (!endTime.isAfter(startTime)) {
-      throw new IllegalArgumentException("종료 시간은 시작 시간 이후여야 합니다.");
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
     }
 
     return new Schedule(popup, scheduleDate, startTime, endTime, maxCapacity);
@@ -88,15 +78,15 @@ public class Schedule extends BaseEntity {
   // 예약 인원 추가
   public void addReservation(int count) {
     if (count <= 0) {
-      throw new IllegalArgumentException("추가할 인원수는 1명 이상이어야 합니다.");
+      throw ScheduleErrorCode.INVALID_CAPACITY.toException();
     }
 
     if (!this.isActive) {
-      throw new IllegalStateException("해당 타임 슬롯은 현재 예약이 불가능합니다.");
+      throw ScheduleErrorCode.SCHEDULE_INACTIVE.toException();
     }
 
     if (this.nowCapacity + count > this.maxCapacity) {
-      throw new IllegalStateException("정원을 초과했습니다.");
+      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
     }
 
     this.nowCapacity += count;
@@ -105,11 +95,11 @@ public class Schedule extends BaseEntity {
   // 예약 취소
   public void cancelReservation(int count) {
     if (count <= 0) {
-      throw new IllegalArgumentException("취소할 인원수는 1명 이상이어야 합니다.");
+      throw ScheduleErrorCode.INVALID_CAPACITY.toException();
     }
 
     if (this.nowCapacity < count) {
-      throw new IllegalStateException("취소하려는 인원이 현재 예약된 인원보다 많습니다.");
+      throw ScheduleErrorCode.INVALID_CANCEL_COUNT.toException();
     }
 
     this.nowCapacity -= count;
