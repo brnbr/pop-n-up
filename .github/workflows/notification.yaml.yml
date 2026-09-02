@@ -1,0 +1,93 @@
+name: Slack Notification
+
+on:
+  workflow_run:
+    workflows: ["CI Check"]
+    types:
+      - completed
+
+jobs:
+  notify-slack:
+    name: Notify Slack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Slack Notification
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CI_STATUS: ${{ github.event.workflow_run.conclusion }}
+          BRANCH_NAME: ${{ github.event.workflow_run.head_branch }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "⚠️ SLACK_WEBHOOK_URL이 설정되지 않았습니다."
+            exit 0
+          fi
+
+          if [ "$CI_STATUS" = "success" ]; then
+            STATUS_TEXT="✅ CI 테스트 통과"
+            HEADER_TEXT="🎉 CI 테스트가 통과했습니다!"
+          else
+            STATUS_TEXT="❌ CI 테스트 실패"
+            HEADER_TEXT="🚨 CI 테스트가 실패했습니다!"
+          fi
+
+          cat << EOF > slack_message.json
+          {
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "$HEADER_TEXT"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*브랜치*\n🌿 \`$BRANCH_NAME\`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*상태*\n$STATUS_TEXT"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "CI Workflow 실행 결과를 확인해주세요."
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "CI 결과 보기 🚀"
+                    },
+                    "style": "primary",
+                    "url": "$RUN_URL"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            --data @slack_message.json \
+            "$SLACK_WEBHOOK_URL"
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Slack 알림 전송 완료!"
+          else
+            echo "❌ Slack 알림 전송 실패"
+          fi
