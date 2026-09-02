@@ -68,6 +68,10 @@ public class Reservation extends BaseEntity {
 
     //예약 취소
     public void cancel() {
+        if (this.status == ReservationStatus.CANCELED) {
+            throw
+        }
+
         this.status = ReservationStatus.CANCELED;
     }
 }
