@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # =========================
+      # Slack 알림
+      # =========================
       - name: Send Slack Notification
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -24,7 +27,7 @@ jobs:
             echo "⚠️ SLACK_WEBHOOK_URL이 설정되지 않았습니다."
             exit 0
           fi
-
+          
           if [ "$CI_STATUS" = "success" ]; then
             STATUS_TEXT="✅ CI 테스트 통과"
             HEADER_TEXT="🎉 CI 테스트가 통과했습니다!"
@@ -32,7 +35,7 @@ jobs:
             STATUS_TEXT="❌ CI 테스트 실패"
             HEADER_TEXT="🚨 CI 테스트가 실패했습니다!"
           fi
-
+          
           cat << EOF > slack_message.json
           {
             "blocks": [
@@ -80,14 +83,76 @@ jobs:
             ]
           }
           EOF
-
+          
           curl -X POST \
             -H "Content-Type: application/json" \
             --data @slack_message.json \
             "$SLACK_WEBHOOK_URL"
-
+          
           if [ $? -eq 0 ]; then
             echo "✅ Slack 알림 전송 완료!"
           else
             echo "❌ Slack 알림 전송 실패"
           fi
+
+      # =========================
+      # Discord 알림
+      # =========================
+      - name: Send Discord Notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          CI_STATUS: ${{ github.event.workflow_run.conclusion }}
+          BRANCH_NAME: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "⚠️ DISCORD_WEBHOOK_URL이 설정되지 않았습니다."
+            exit 0
+          fi
+          
+          if [ "$CI_STATUS" = "success" ]; then
+            TITLE="🎉 CI 테스트 통과"
+            DESCRIPTION="모든 CI 테스트가 성공적으로 통과했습니다."
+          else
+            TITLE="🚨 CI 테스트 실패"
+            DESCRIPTION="CI 테스트를 확인해주세요."
+          fi
+          
+          cat << EOF > discord_message.json
+          {
+            "embeds": [
+              {
+                "title": "$TITLE",
+                "description": "$DESCRIPTION",
+                "fields": [
+                  {
+                    "name": "🌿 브랜치",
+                    "value": "\`$BRANCH_NAME\`",
+                    "inline": true
+                  },
+                  {
+                    "name": "📊 상태",
+                    "value": "$CI_STATUS",
+                    "inline": true
+                  }
+                ],
+                "footer": {
+                  "text": "POP'N UP CI"
+                },
+                "url": "$RUN_URL"
+              }
+            ]
+          }
+          EOF
+          
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            --data @discord_message.json \
+            "$DISCORD_WEBHOOK_URL"
+          
+          if [ $? -eq 0 ]; then
+            echo "✅ Discord 알림 전송 완료!"
+          else
+            echo "❌ Discord 알림 전송 실패"
+          fi
+  
