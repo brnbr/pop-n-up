@@ -1,5 +1,6 @@
 package com.popnup.popnupbackend.domain.reservation.entity;
 
+import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
@@ -7,7 +8,6 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.apache.catalina.User;
 
 @Entity
 @Getter
@@ -23,8 +23,8 @@ public class Reservation extends BaseEntity {
     private String reservationNumber;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member member;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "schedule_id", nullable = false)
@@ -40,17 +40,17 @@ public class Reservation extends BaseEntity {
     @Column(nullable = false, length = 30)
     private ReservationStatus status;
 
-    private Reservation(String reservationNumber, User user, Schedule schedule, Integer personCount, ReservationStatus status) {
+    private Reservation(String reservationNumber, Member member, Schedule schedule, Integer personCount, ReservationStatus status) {
         this.reservationNumber = reservationNumber;
-        this.user = user;
+        this.member = member;
         this.schedule = schedule;
         this.personCount = personCount;
         this.status = status;
     }
 
     //예약 생성 - 결제하면 confirmed
-    public static Reservation createReservation(String reservationNumber, User user, Schedule schedule, Integer personCount) {
-        return new Reservation(reservationNumber, user, schedule, personCount, ReservationStatus.PENDING);
+    public static Reservation createReservation(String reservationNumber, Member member, Schedule schedule, Integer personCount) {
+        return new Reservation(reservationNumber, member, schedule, personCount, ReservationStatus.PENDING);
     }
 
     //결제 후 예약 최종 확정
