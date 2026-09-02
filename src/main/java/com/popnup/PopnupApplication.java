@@ -6,8 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class PopnupApplication {
 
-    public static void main(String[] args) {
-        SpringApplication.run(PopnupApplication.class, args);
-    }
-
+  public static void main(String[] args) {
+    SpringApplication.run(PopnupApplication.class, args);
+  }
 }
