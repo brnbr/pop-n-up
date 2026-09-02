@@ -5,6 +5,7 @@ import com.popnup.popnupbackend.domain.popup.repository.PopupRepository;
 import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleCreateRequest;
 import com.popnup.popnupbackend.domain.schedule.dto.response.ScheduleResponse;
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
+import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,7 +32,7 @@ public class ScheduleService {
     @Transactional
     public Long createSchedule(ScheduleCreateRequest request) {
         Popup popup = popupRepository.findById(request.getPopupId()).orElseThrow(() -> new IllegalArgumentException("존재하지 않는 팝업입니다."));
-
+                                                                                        //임시 코드. 팝업에서 에러 코드 생성시 교체하겠습니다.
         Schedule schedule = Schedule.createSchedule
                 (
                     popup,
@@ -48,7 +49,7 @@ public class ScheduleService {
     // 타임 슬롯 활성화/비활성화
     @Transactional
     public void updateScheduleStatus(Long scheduleId, boolean isActive) {
-        Schedule schedule = scheduleRepository.findById(scheduleId).orElseThrow(() -> new IllegalArgumentException("존재하지 않는 스케줄입니다."));
+        Schedule schedule = scheduleRepository.findById(scheduleId).orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
         schedule.updateActiveStatus(isActive);
     }
 
@@ -57,7 +58,7 @@ public class ScheduleService {
         Schedule schedule = scheduleRepository.findById(scheduleId).orElseThrow(() -> new IllegalArgumentException("존재하지 않는 스케줄입니다."));
 
         if (schedule.getNowCapacity() > 0) {
-            throw new IllegalStateException("이미 예약자가 존재하는 스케줄은 삭제할 수 없습니다.");
+            throw ScheduleErrorCode.CANNOT_DELETE_RESERVED_SCHEDULE.toException();
         }
 
         scheduleRepository.delete(schedule);
