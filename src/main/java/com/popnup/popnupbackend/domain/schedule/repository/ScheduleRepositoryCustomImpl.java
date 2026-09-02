@@ -13,17 +13,17 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
 
-    private final JPAQueryFactory queryFactory;
+  private final JPAQueryFactory queryFactory;
 
-    @Override
-    public List<Schedule> findActiveSchedulesByDate(Long popupId, LocalDate date) {
-        return queryFactory
-                .selectFrom(schedule)
-                .where(
-                        schedule.popup.id.eq(popupId),
-                        schedule.scheduleDate.eq(date),
-                        schedule.isActive.isTrue())
-                .orderBy(schedule.startTime.asc())
-                .fetch();
-    }
+  @Override
+  public List<Schedule> findActiveSchedulesByDate(Long popupId, LocalDate date) {
+    return queryFactory
+        .selectFrom(schedule)
+        .where(
+            schedule.popup.id.eq(popupId),
+            schedule.scheduleDate.eq(date),
+            schedule.isActive.isTrue())
+        .orderBy(schedule.startTime.asc())
+        .fetch();
+  }
 }

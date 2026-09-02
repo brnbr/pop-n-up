@@ -1,5 +1,6 @@
 package com.popnup.popnupbackend.domain.schedule.entity;
 
+import com.popnup.popnupbackend.domain.popup.entity.Popup;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import java.time.LocalDate;
