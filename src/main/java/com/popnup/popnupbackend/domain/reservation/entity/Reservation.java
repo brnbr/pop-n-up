@@ -19,7 +19,7 @@ public class Reservation extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 50)
     private String reservationNumber;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -33,10 +33,11 @@ public class Reservation extends BaseEntity {
     @Column(nullable = false)
     private Integer personCount;
 
+    @Column(length = 500)
     private String qrCodeUrl;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 30)
     private ReservationStatus status;
 
     private Reservation(String reservationNumber, User user, Schedule schedule, Integer personCount, ReservationStatus status) {
@@ -47,9 +48,17 @@ public class Reservation extends BaseEntity {
         this.status = status;
     }
 
-    //예약 생성
-    public static Reservation createReservaion(String reservationNumber, User user, Schedule schedule, Integer personCount) {
+    //예약 생성 - 결제하면 confirmed
+    public static Reservation createReservation(String reservationNumber, User user, Schedule schedule, Integer personCount) {
         return new Reservation(reservationNumber, user, schedule, personCount, ReservationStatus.PENDING);
+    }
+
+    //결제 후 예약 최종 확정
+    public void confirm() {
+        if (this.status != ReservationStatus.PENDING) {
+            throw
+        }
+        this.status = ReservationStatus.CONFIRMED;
     }
 
     //qr 발급
