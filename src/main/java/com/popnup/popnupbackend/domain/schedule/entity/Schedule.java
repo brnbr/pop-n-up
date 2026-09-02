@@ -1,5 +1,6 @@
 package com.popnup.popnupbackend.domain.schedule.entity;
 
+import com.popnup.popnupbackend.domain.popup.entity.Popup;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
@@ -62,8 +63,7 @@ public class Schedule extends BaseEntity {
       LocalDate scheduleDate,
       LocalTime startTime,
       LocalTime endTime,
-      Integer maxCapacity)
-  {
+      Integer maxCapacity) {
     if (maxCapacity == null || maxCapacity <= 0) {
       throw ScheduleErrorCode.INVALID_CAPACITY.toException();
     }

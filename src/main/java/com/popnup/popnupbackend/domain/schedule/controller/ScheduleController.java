@@ -33,9 +33,8 @@ public class ScheduleController {
   public ResponseEntity<ApiResponse<Long>> createSchedule(
       @Valid @RequestBody ScheduleCreateRequest request) {
     Long scheduleId = scheduleService.createSchedule(request);
-    return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
   }
 
   // 타임 슬롯 활성화/비활성화 상태 변경
