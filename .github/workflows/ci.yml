@@ -32,6 +32,8 @@ jobs:
         run: ./gradlew spotlessCheck
 
       - name: Run tests
+        env:
+          SPRING__SECURITY__OAUTH2__CLIENT__REGISTRATION__KAKAO__CLIENT_ID: ${{ secrets.SPRING__SECURITY__OAUTH2__CLIENT__REGISTRATION__KAKAO__CLIENT_ID }}
         run: ./gradlew test
 
       - name: Build
