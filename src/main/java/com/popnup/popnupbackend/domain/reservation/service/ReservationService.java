@@ -1,12 +1,106 @@
 package com.popnup.popnupbackend.domain.reservation.service;
 
+import com.fasterxml.uuid.Generators;
+import com.popnup.popnupbackend.domain.member.entity.Member;
+import com.popnup.popnupbackend.domain.member.exception.MemberNotFoundException;
+import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
+import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
+import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
+import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
+import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
+import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
+import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
+import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
+import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
+import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 public class ReservationService {
 
-    private final ReservationRepository reservationRepository;
+  private final ReservationRepository reservationRepository;
+  private final ScheduleRepository scheduleRepository;
+  private final MemberRepository memberRepository;
+
+  // 예약 생성
+  @Transactional
+  public ReservationCreateResponse book(Long memberId, ReservationCreateRequest request) {
+    Member member =
+        memberRepository
+            .findById(memberId)
+            .orElseThrow(() -> new MemberNotFoundException()); // 에러 처리 통일 필요
+
+    Schedule schedule =
+        scheduleRepository
+            .findById(request.getScheduleId())
+            .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+
+    String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+    String timeUUID =
+        Generators.timeBasedGenerator()
+            .generate()
+            .toString()
+            .replace("-", "")
+            .substring(0, 8)
+            .toUpperCase();
+    String reservationNumber = "R" + today + timeUUID;
+
+    Reservation reservation =
+        Reservation.createReservation(
+            reservationNumber, member, schedule, request.getPersonCount());
+    Reservation savedReservation = reservationRepository.save(reservation);
+
+    return ReservationCreateResponse.from(
+        savedReservation.getId(), savedReservation.getReservationNumber());
+  }
+
+  // 예약 취소
+  @Transactional
+  public void cancel(Long memberId, Long reservationId) {
+    Reservation reservation =
+        reservationRepository
+            .findById(reservationId)
+            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+
+    if (!reservation.getMember().getId().equals(memberId)) {
+      throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
+    }
+
+    if (reservation.getStatus() == ReservationStatus.CANCELED) {
+      throw ReservationErrorCode.ALREADY_CANCELED_RESERVATION.toException();
+    }
+
+    if (reservation.getStatus() == ReservationStatus.USED) {
+      throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
+    }
+
+    reservation.cancel();
+
+    Schedule schedule = reservation.getSchedule();
+    schedule.cancelReservation(reservation.getPersonCount());
+  }
+
+  // 예약 목록 조회
+  @Transactional(readOnly = true)
+  public List<ReservationResponse> allReservations(Long memberId) {
+    return reservationRepository.getAllReservation(memberId).stream()
+        .map(ReservationResponse::from)
+        .toList();
+  }
+
+  // 단 건 조회
+  @Transactional(readOnly = true)
+  public ReservationResponse oneReservation(Long memberId, Long reservationId) {
+    return reservationRepository
+        .findByIdAndMemberId(memberId, reservationId)
+        .map(ReservationResponse::from)
+        .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+  }
 }
