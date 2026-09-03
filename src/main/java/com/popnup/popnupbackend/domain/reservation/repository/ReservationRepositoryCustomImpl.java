@@ -3,6 +3,7 @@ package com.popnup.popnupbackend.domain.reservation.repository;
 import static com.popnup.popnupbackend.domain.reservation.entity.QReservation.reservation;
 
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
+import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -19,5 +20,23 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
         .where(reservation.member.id.eq(memberId))
         .orderBy(reservation.createdAt.desc())
         .fetch();
+  }
+
+  @Override
+  public boolean hasActiveReservation(Long scheduleId, Long memberId) {
+    Integer fetchOne =  queryFactory
+            .selectOne()
+            .from(reservation)
+            .where(
+                    reservation.schedule.id.eq(scheduleId),
+                    reservation.member.id.eq(memberId),
+                    reservation.status.in(
+                            ReservationStatus.PENDING,
+                            ReservationStatus.CANCELED,
+                            ReservationStatus.USED
+                    )
+            ).fetchFirst();
+
+    return fetchOne != null;
   }
 }

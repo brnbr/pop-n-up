@@ -5,4 +5,6 @@ import java.util.List;
 
 public interface ReservationRepositoryCustom {
   List<Reservation> getAllReservation(Long memberId);
+
+  boolean hasActiveReservation(Long scheduleId, Long memberId);
 }
