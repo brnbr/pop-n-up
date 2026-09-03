@@ -63,8 +63,7 @@ public class Schedule extends BaseEntity {
       LocalDate scheduleDate,
       LocalTime startTime,
       LocalTime endTime,
-      Integer maxCapacity)
-  {
+      Integer maxCapacity) {
     if (maxCapacity == null || maxCapacity <= 0) {
       throw ScheduleErrorCode.INVALID_CAPACITY.toException();
     }

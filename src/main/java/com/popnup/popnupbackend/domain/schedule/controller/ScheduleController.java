@@ -22,8 +22,8 @@ public class ScheduleController {
   // 사용자 - 특정 팝업의 날짜별 스케줄 목록 조회
   @GetMapping("/popups/{popupId}/schedules")
   public ResponseEntity<ApiResponse<List<ScheduleResponse>>> getSchedules(
-          @PathVariable Long popupId,
-          @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+      @PathVariable Long popupId,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
     List<ScheduleResponse> responses = scheduleService.getScheduleByDate(popupId, date);
     return ResponseEntity.ok(ApiResponse.success("스케줄 목록 조회 성공", responses));
   }
@@ -31,17 +31,16 @@ public class ScheduleController {
   // 스케줄 단건 등록
   @PostMapping("/admin/schedules")
   public ResponseEntity<ApiResponse<Long>> createSchedule(
-          @Valid @RequestBody ScheduleCreateRequest request) {
+      @Valid @RequestBody ScheduleCreateRequest request) {
     Long scheduleId = scheduleService.createSchedule(request);
-    return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
   }
 
   // 타임 슬롯 활성화/비활성화 상태 변경
   @PatchMapping("/admin/schedules/{scheduleId}/status")
   public ResponseEntity<ApiResponse<Void>> updateScheduleStatus(
-          @PathVariable Long scheduleId, @RequestParam boolean isActive) {
+      @PathVariable Long scheduleId, @RequestParam boolean isActive) {
     scheduleService.updateScheduleStatus(scheduleId, isActive);
     return ResponseEntity.ok(ApiResponse.success("스케줄 상태가 변경되었습니다.", null));
   }
