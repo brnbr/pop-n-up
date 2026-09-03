@@ -6,5 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ReservationRepository
     extends JpaRepository<Reservation, Long>, ReservationRepositoryCustom {
-  Optional<Reservation> findByIdAndMemberId(Long memberId, Long reservationId);
+  Optional<Reservation> findByIdAndMemberId(Long reservationId, Long memberId);
 }
