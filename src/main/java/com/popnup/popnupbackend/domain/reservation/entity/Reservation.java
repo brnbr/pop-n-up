@@ -2,6 +2,7 @@ package com.popnup.popnupbackend.domain.reservation.entity;
 
 import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
+import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
@@ -56,7 +57,7 @@ public class Reservation extends BaseEntity {
     //결제 후 예약 최종 확정
     public void confirm() {
         if (this.status != ReservationStatus.PENDING) {
-            throw
+            throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
         }
         this.status = ReservationStatus.CONFIRMED;
     }
@@ -69,7 +70,7 @@ public class Reservation extends BaseEntity {
     //예약 취소
     public void cancel() {
         if (this.status == ReservationStatus.CANCELED) {
-            throw
+            throw ReservationErrorCode.ALREADY_CANCELED_RESERVATION.toException();
         }
 
         this.status = ReservationStatus.CANCELED;
