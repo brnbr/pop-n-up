@@ -42,6 +42,11 @@ public class ReservationService {
             .findById(request.getScheduleId())
             .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
 
+    //중복 예약 검사
+    if (reservationRepository.hasActiveReservation(schedule.getId(), memberId)) {
+      throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
+    }
+
     String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
     String timeUUID =
         Generators.timeBasedGenerator()
