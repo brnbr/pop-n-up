@@ -61,7 +61,10 @@ public class Reservation extends BaseEntity {
         reservationNumber, member, schedule, personCount, ReservationStatus.PENDING);
   }
 
-  // 결제 후 예약 최종 확정
+  /* 결제 후 예약 최종 확정
+    - 결제 도메인 도입 후 보완 필요
+    - 결제 결과 받아서 상태/유효성 확인 후 confirm 처리
+  */
   public void confirm() {
     if (this.status != ReservationStatus.PENDING) {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
