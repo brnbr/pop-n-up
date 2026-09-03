@@ -5,6 +5,7 @@ import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.member.exception.MemberNotFoundException;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
+import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
@@ -39,13 +40,15 @@ public class ReservationService {
 
     Schedule schedule =
         scheduleRepository
-            .findById(request.getScheduleId())
+            .findByIdWithPessimisticLock(request.getScheduleId())
             .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
 
-    //중복 예약 검사
+    // 중복 예약 검사
     if (reservationRepository.hasActiveReservation(schedule.getId(), memberId)) {
       throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
     }
+
+    schedule.addReservation(request.getPersonCount());
 
     String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
     String timeUUID =
@@ -64,6 +67,18 @@ public class ReservationService {
 
     return ReservationCreateResponse.from(
         savedReservation.getId(), savedReservation.getReservationNumber());
+  }
+
+  /* 결제 성공 시 예약 확정 처리
+    - 결제 도메인 도입 후 보완 필요
+  */
+  @Transactional
+  public void confirmReservation(Long reservationId) {
+    Reservation reservation =
+        reservationRepository
+            .findById(reservationId)
+            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+    reservation.confirm();
   }
 
   // 예약 취소
@@ -107,5 +122,14 @@ public class ReservationService {
         .findByIdAndMemberId(memberId, reservationId)
         .map(ReservationResponse::from)
         .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+  }
+
+  // 관리자 - 예약 목록 조회
+  @Transactional(readOnly = true)
+  public List<AdminReservationResponse> getAdminReservations(
+      Long popupId, LocalDate scheduleDate, ReservationStatus status) {
+    return reservationRepository.findAdminReservations(popupId, scheduleDate, status).stream()
+        .map(AdminReservationResponse::from)
+        .toList();
   }
 }
