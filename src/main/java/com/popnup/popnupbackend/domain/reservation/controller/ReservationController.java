@@ -2,13 +2,17 @@ package com.popnup.popnupbackend.domain.reservation.controller;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
+import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
+import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import com.popnup.popnupbackend.global.common.ApiResponse;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -40,8 +44,8 @@ public class ReservationController {
   @GetMapping("/reservations")
   public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAll(
       @AuthenticationPrincipal AuthUser authUser) {
-    List<ReservationResponse> response = reservationService.allReservations(authUser.getId());
-    return ResponseEntity.ok(ApiResponse.success(response));
+    return ResponseEntity.ok(
+        ApiResponse.success(reservationService.allReservations(authUser.getId())));
   }
 
   // 단 건 조회
@@ -50,5 +54,17 @@ public class ReservationController {
       @AuthenticationPrincipal AuthUser authUser, @Valid @PathVariable Long reservationId) {
     return ResponseEntity.ok(
         ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
+  }
+
+  // 관리자 - 전체 조회
+  @GetMapping("/admin/reservations")
+  public ResponseEntity<ApiResponse<List<AdminReservationResponse>>> getAllAdmin(
+      @RequestParam Long popupId,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+          LocalDate scheduleDate,
+      @RequestParam(required = false) ReservationStatus status) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            reservationService.getAdminReservations(popupId, scheduleDate, status)));
   }
 }
