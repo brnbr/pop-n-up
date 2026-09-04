@@ -54,7 +54,7 @@ public class Reservation extends BaseEntity {
     this.status = status;
   }
 
-  // 예약 생성 - 결제하면 confirmed
+  // 예약 생성 - 결제하면 confirme되게 추가해야 함
   public static Reservation createReservation(
       String reservationNumber, Member member, Schedule schedule, Integer personCount) {
     return new Reservation(
@@ -80,8 +80,8 @@ public class Reservation extends BaseEntity {
 
   // 예약 취소
   public void cancel() {
-    if (this.status == ReservationStatus.CANCELED) {
-      throw ReservationErrorCode.ALREADY_CANCELED_RESERVATION.toException();
+    if (this.status != ReservationStatus.CONFIRMED && this.status != ReservationStatus.PENDING) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
     }
 
     this.status = ReservationStatus.CANCELED;
