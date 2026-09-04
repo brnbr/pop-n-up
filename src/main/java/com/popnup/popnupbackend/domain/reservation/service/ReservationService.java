@@ -93,17 +93,15 @@ public class ReservationService {
       throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
     }
 
-    if (reservation.getStatus() == ReservationStatus.CANCELED) {
-      throw ReservationErrorCode.ALREADY_CANCELED_RESERVATION.toException();
-    }
-
-    if (reservation.getStatus() == ReservationStatus.USED) {
-      throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
-    }
-
     reservation.cancel();
 
-    Schedule schedule = reservation.getSchedule();
+    // 락 추가
+    Long scheduleId = reservation.getSchedule().getId();
+    Schedule schedule =
+        scheduleRepository
+            .findByIdWithPessimisticLock(scheduleId)
+            .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+
     schedule.cancelReservation(reservation.getPersonCount());
   }
 
@@ -117,9 +115,9 @@ public class ReservationService {
 
   // 단 건 조회
   @Transactional(readOnly = true)
-  public ReservationResponse oneReservation(Long memberId, Long reservationId) {
+  public ReservationResponse oneReservation(Long reservationId, Long memberId) {
     return reservationRepository
-        .findByIdAndMemberId(memberId, reservationId)
+        .findByIdAndMemberId(reservationId, memberId)
         .map(ReservationResponse::from)
         .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
   }
