@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: read
-  checks: read
+  checks: write
 
 jobs:
   backend-ci:
