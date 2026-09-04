@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: read
-  checks: read
+  checks: write
 
 jobs:
   backend-ci:
@@ -39,7 +39,6 @@ jobs:
         env:
           KAKAO__CLIENT_ID: ${{ secrets.KAKAO__CLIENT_ID }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: ./gradlew test
 
       - name: 테스트 리포트 작성
