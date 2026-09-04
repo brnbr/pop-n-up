@@ -10,6 +10,10 @@ on:
       - dev
       - main
 
+permissions:
+  contents: read
+  checks: read
+
 jobs:
   backend-ci:
     name: Backend CI
