@@ -1,6 +1,7 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
 import com.popnup.popnupbackend.domain.popup.entity.Popup;
+import com.popnup.popnupbackend.domain.popup.exception.PopupNotFoundException;
 import com.popnup.popnupbackend.domain.popup.repository.PopupRepository;
 import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleCreateRequest;
 import com.popnup.popnupbackend.domain.schedule.dto.response.ScheduleResponse;
@@ -33,8 +34,8 @@ public class ScheduleService {
     Popup popup =
         popupRepository
             .findById(request.getPopupId())
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 팝업입니다."));
-    // 임시 코드. 팝업에서 에러 코드 생성시 교체하겠습니다.
+            .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 팝업입니다."));
+
     Schedule schedule =
         Schedule.createSchedule(
             popup,
@@ -62,7 +63,7 @@ public class ScheduleService {
     Schedule schedule =
         scheduleRepository
             .findById(scheduleId)
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 스케줄입니다."));
+            .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 스케줄입니다."));
 
     if (schedule.getNowCapacity() > 0) {
       throw ScheduleErrorCode.CANNOT_DELETE_RESERVED_SCHEDULE.toException();
