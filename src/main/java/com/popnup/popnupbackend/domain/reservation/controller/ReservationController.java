@@ -25,8 +25,8 @@ public class ReservationController {
 
   // 예약 생성
   @PostMapping("/reservations")
-  public ResponseEntity<ApiResponse<ReservationCreateResponse>> createResrvation(
-      @AuthenticationPrincipal AuthUser authUser,
+  public ResponseEntity<ApiResponse<ReservationCreateResponse>> createReservation(
+       @AuthenticationPrincipal AuthUser authUser,
       @Valid @RequestBody ReservationCreateRequest request) {
     return ResponseEntity.ok(
         ApiResponse.success(reservationService.book(authUser.getId(), request)));
