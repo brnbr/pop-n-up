@@ -116,7 +116,7 @@ public class ReservationService {
 
   // 단 건 조회
   @Transactional(readOnly = true)
-  public ReservationResponse oneReservation(Long reservationId, Long memberId) {
+  public ReservationResponse oneReservation(Long memberId, Long reservationId) {
     return reservationRepository
         .findByIdAndMemberId(reservationId, memberId)
         .map(ReservationResponse::from)
