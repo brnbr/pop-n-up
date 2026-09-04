@@ -17,4 +17,4 @@ spring:
     password: ""
 
 jwt:
-  secret: c29tZS1zZWNyZXQta2V5LXRlc3QtMTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwPQ==
+  secret: cG9wbnVwLXNlY3JldC1rZXktZm9yLXRlc3QtZW52aXJvbm1lbnQtMjAyNi12ZXJ5LXNhZmUtYW5kLXNlY3VyZQ==
