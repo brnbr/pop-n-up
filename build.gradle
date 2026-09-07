@@ -74,3 +74,7 @@ spotless {
 tasks.named('compileJava') {
     dependsOn 'spotlessApply'
 }
+
+tasks.matching { it.name.startsWith("spotless") }.configureEach {
+    dependsOn(tasks.compileJava)
+}
