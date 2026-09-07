@@ -11,6 +11,7 @@ import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
@@ -61,6 +62,19 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
             reservation.schedule.startTime.asc(),
             reservation.id.asc())
         .fetch();
+  }
+
+  @Override
+  public Optional<Reservation> findByReservationNumber(String reservationNumber) {
+    Reservation result =
+        queryFactory
+            .selectFrom(reservation)
+            .join(reservation.member, member)
+            .fetchJoin()
+            .where(reservation.reservationNumber.eq(reservationNumber))
+            .fetchOne();
+
+    return Optional.ofNullable(result);
   }
 
   // dsl 적용 후 삭제
