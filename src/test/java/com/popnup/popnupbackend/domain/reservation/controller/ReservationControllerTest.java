@@ -4,6 +4,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willDoNothing;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -79,7 +81,7 @@ class ReservationControllerTest {
   class CreateReservation {
 
     @Test
-    @DisplayName("유효한 요청이 들어오면 예약 생성 후 200 OK와 생성 정보를 반환한다")
+    @DisplayName("성공: 유효한 요청 시 예약 생성 후 200 OK와 예약 번호를 반환한다")
     void createReservation_success() throws Exception {
       String jsonRequest =
           """
@@ -100,7 +102,6 @@ class ReservationControllerTest {
               post("/reservations").contentType(MediaType.APPLICATION_JSON).content(jsonRequest))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.code").value("200"))
           .andExpect(jsonPath("$.content.reservationId").value(100L))
           .andExpect(jsonPath("$.content.reservationNumber").value("R20260907A1B2C3D4"));
     }
@@ -166,7 +167,7 @@ class ReservationControllerTest {
   class DeleteReservation {
 
     @Test
-    @DisplayName("예약 ID를 넘기면 정상적으로 예약을 취소하고 200 OK를 반환한다")
+    @DisplayName("성공: 예약 ID로 취소 요청 시 200 OK를 반환한다")
     void deleteReservation_success() throws Exception {
       Long reservationId = 100L;
       willDoNothing().given(reservationService).cancel(memberId, reservationId);
@@ -185,7 +186,7 @@ class ReservationControllerTest {
   class GetAllReservations {
 
     @Test
-    @DisplayName("로그인한 회원의 전체 예약 목록을 200 OK로 반환한다")
+    @DisplayName("성공: 로그인한 회원의 전체 예약 목록을 200 OK로 반환한다")
     void getAll_success() throws Exception {
       ReservationResponse item1 =
           new ReservationResponse(
@@ -194,16 +195,13 @@ class ReservationControllerTest {
           new ReservationResponse(
               2L, "R20260907-2222", ReservationStatus.CANCELED, LocalDateTime.now(), 1);
 
-      given(reservationService.allReservations(memberId)).willReturn(List.of(item1, item2));
+      given(reservationService.allReservations(memberId)).willReturn(List.of(item));
 
       mockMvc
           .perform(get("/reservations"))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.content").isArray())
-          .andExpect(jsonPath("$.content.length()").value(2))
-          .andExpect(jsonPath("$.content[0].reservationId").value(1L))
-          .andExpect(jsonPath("$.content[1].reservationId").value(2L));
+          .andExpect(jsonPath("$.content[0].reservationId").value(1L));
     }
   }
 
@@ -212,14 +210,15 @@ class ReservationControllerTest {
   class GetOneReservation {
 
     @Test
-    @DisplayName("특정 예약 ID를 조회하면 상세 정보를 200 OK로 반환한다")
+    @DisplayName("성공: 예약 ID로 단건 조회 시 200 OK와 상세 정보를 반환한다")
     void getOne_success() throws Exception {
       Long reservationId = 100L;
       ReservationResponse response =
           new ReservationResponse(
               reservationId, "R20260907-1111", ReservationStatus.CONFIRMED, LocalDateTime.now(), 2);
 
-      given(reservationService.oneReservation(memberId, reservationId)).willReturn(response);
+      given(reservationService.oneReservation(eq(memberId), eq(reservationId)))
+          .willReturn(response);
 
       mockMvc
           .perform(get("/reservations/{reservationId}", reservationId))

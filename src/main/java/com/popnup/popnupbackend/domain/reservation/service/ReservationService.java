@@ -19,6 +19,7 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -129,7 +130,13 @@ public class ReservationService {
 
     reservation.cancel();
 
-    Schedule schedule = reservation.getSchedule();
+    // 락 추가
+    Long scheduleId = reservation.getSchedule().getId();
+    Schedule schedule =
+        scheduleRepository
+            .findByIdWithPessimisticLock(scheduleId)
+            .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+
     schedule.cancelReservation(reservation.getPersonCount());
   }
 
@@ -157,5 +164,25 @@ public class ReservationService {
     return reservationRepository.findAdminReservations(popupId, scheduleDate, status).stream()
         .map(AdminReservationResponse::from)
         .toList();
+  }
+
+  // 결제 타임아웃 시 예약 취소
+  @Transactional
+  public void payTimeOut() {
+    LocalDateTime deadLine = LocalDateTime.now().minusMinutes(10);
+
+    List<Reservation> deadReservations =
+        reservationRepository.findByStatusAndCreatedAtBefore(ReservationStatus.PENDING, deadLine);
+
+    for (Reservation dr : deadReservations) {
+      dr.cancel();
+
+      Long scheduleId = dr.getSchedule().getId();
+      Schedule schedule =
+          scheduleRepository
+              .findByIdWithPessimisticLock(scheduleId)
+              .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+      schedule.cancelReservation(dr.getPersonCount());
+    }
   }
 }
