@@ -18,7 +18,10 @@ public enum ReservationErrorCode implements ErrorCode {
 
   ALREADY_CANCELED_RESERVATION(HttpStatus.CONFLICT, "이미 취소된 예약입니다."),
   ALREADY_PROCESSED_RESERVATION(HttpStatus.CONFLICT, "이미 처리 완료된 예약입니다."),
-  DUPLICATE_USER_RESERVATION(HttpStatus.CONFLICT, "해당 타임 슬롯이 이미 진행 중인 예약이 있습니다");
+  DUPLICATE_USER_RESERVATION(HttpStatus.CONFLICT, "해당 타임 슬롯이 이미 진행 중인 예약이 있습니다"),
+
+  QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "QR 코드 생성에 실패 했습니다."),
+  ;
 
   private final HttpStatus httpStatus;
   private final String message;
