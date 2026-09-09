@@ -1,5 +1,6 @@
 package com.popnup.popnupbackend.domain.schedule.controller;
 
+import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleBatchCreateRequest;
 import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleCreateRequest;
 import com.popnup.popnupbackend.domain.schedule.dto.response.ScheduleResponse;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleService;
@@ -50,5 +51,14 @@ public class ScheduleController {
   public ResponseEntity<ApiResponse<Void>> deleteSchedule(@PathVariable Long scheduleId) {
     scheduleService.deleteSchedule(scheduleId);
     return ResponseEntity.ok(ApiResponse.success("스케줄이 삭제되었습니다.", null));
+  }
+
+  // 관리자 - 타임 슬롯 일괄 등록
+  @PostMapping("/admin/schedules/batch")
+  public ResponseEntity<ApiResponse<Integer>> createBatchSchedules(
+      @Valid @RequestBody ScheduleBatchCreateRequest request) {
+    int createdCount = scheduleService.createBatchSchedules(request);
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("총 " + createdCount + "개의 타임 슬롯이 등록되었습니다.", createdCount));
   }
 }
