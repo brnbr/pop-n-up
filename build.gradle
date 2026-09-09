@@ -55,6 +55,10 @@ dependencies {
     //ZXing
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.zxing:javase:3.5.3'
+
+    //크롤링
+    implementation 'org.jsoup:jsoup:1.18.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
 }
 
 tasks.named('test') {
