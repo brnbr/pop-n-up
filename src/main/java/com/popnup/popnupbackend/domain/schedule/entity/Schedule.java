@@ -13,7 +13,14 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
-@Table(name = "schedules")
+@Table(
+    name = "schedules",
+    indexes = {
+      @Index(
+          name = "idx_schedule_unique",
+          columnList = "popup_id, schedule_date, start_time",
+          unique = true)
+    })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Schedule extends BaseEntity {
 
@@ -116,19 +123,19 @@ public class Schedule extends BaseEntity {
     return getRemainingCapacity() == 0;
   }
 
-  //시작된 회차인가? (신규 예약 불가)
+  // 시작된 회차인가? (신규 예약 불가)
   public boolean isAlreadyStarted(LocalDateTime currentDateTime) {
     LocalDateTime startDateTime = LocalDateTime.of(this.scheduleDate, this.startTime);
     return startDateTime.isBefore(currentDateTime);
   }
 
-  //이미 종료된 회차인가?
+  // 이미 종료된 회차인가?
   public boolean isAlreadyEnded(LocalDateTime currentDateTime) {
     LocalDateTime endDateTime = LocalDateTime.of(this.scheduleDate, this.endTime);
     return endDateTime.isBefore(currentDateTime);
   }
 
-  //예약 가능 여부 판단
+  // 예약 가능 여부 판단
   public boolean isBookable(int requestCount, LocalDateTime currentDateTime) {
     return this.isActive
         && !isAlreadyStarted(currentDateTime)
