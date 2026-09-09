@@ -104,4 +104,13 @@ public class Reservation extends BaseEntity {
 
     return memberId.equals(this.member.getId());
   }
+
+  // 노쇼 자동 만료
+  public void expired() {
+    if (this.status != ReservationStatus.CONFIRMED) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
+
+    this.status = ReservationStatus.EXPIRED;
+  }
 }
