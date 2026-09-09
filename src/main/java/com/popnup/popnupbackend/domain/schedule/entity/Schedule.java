@@ -5,6 +5,7 @@ import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -57,7 +58,7 @@ public class Schedule extends BaseEntity {
     this.isActive = true;
   }
 
-  // 팝업 스케쥴 등록
+  // 팝업 스케줄 등록
   public static Schedule createSchedule(
       Popup popup,
       LocalDate scheduleDate,
@@ -92,7 +93,7 @@ public class Schedule extends BaseEntity {
     this.nowCapacity += count;
   }
 
-  // 예약 취소
+  // 예약 취소 + 잔여석 복구
   public void cancelReservation(int count) {
     if (count <= 0) {
       throw ScheduleErrorCode.INVALID_CAPACITY.toException();
@@ -103,6 +104,40 @@ public class Schedule extends BaseEntity {
     }
 
     this.nowCapacity -= count;
+  }
+
+  // 잔여석 계산
+  public int getRemainingCapacity() {
+    return Math.max(0, this.maxCapacity - this.nowCapacity);
+  }
+
+  // 매진 여부 판별
+  public boolean isSoldOut() {
+    return getRemainingCapacity() == 0;
+  }
+
+  //시작된 회차인가? (신규 예약 불가)
+  public boolean isAlreadyStarted(LocalDateTime currentDateTime) {
+    LocalDateTime startDateTime = LocalDateTime.of(this.scheduleDate, this.startTime);
+    return startDateTime.isBefore(currentDateTime);
+  }
+
+  //이미 종료된 회차인가?
+  public boolean isAlreadyEnded(LocalDateTime currentDateTime) {
+    LocalDateTime endDateTime = LocalDateTime.of(this.scheduleDate, this.endTime);
+    return endDateTime.isBefore(currentDateTime);
+  }
+
+  //예약 가능 여부 판단
+  public boolean isBookable(int requestCount, LocalDateTime currentDateTime) {
+    return this.isActive
+        && !isAlreadyStarted(currentDateTime)
+        && (this.nowCapacity + requestCount <= this.maxCapacity);
+  }
+
+  // 운영자 강제 조기 마감/재오픈
+  public void close() {
+    this.isActive = false;
   }
 
   public void updateActiveStatus(boolean isActive) {
