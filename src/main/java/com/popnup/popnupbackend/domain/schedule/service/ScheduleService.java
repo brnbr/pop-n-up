@@ -25,7 +25,7 @@ public class ScheduleService {
   private final ScheduleRepository scheduleRepository;
   private final PopupRepository popupRepository;
 
-  // 사용자 - 특정 팝업의 날짜별 스케쥴 목록 조회
+  // 사용자 - 특정 팝업의 날짜별 스케줄 목록 조회
   @Transactional(readOnly = true)
   public List<ScheduleResponse> getScheduleByDate(Long popupId, LocalDate date) {
     List<Schedule> schedules = scheduleRepository.findActiveSchedulesByDate(popupId, date);
@@ -42,12 +42,10 @@ public class ScheduleService {
             .findById(request.getPopupId())
             .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 팝업입니다."));
 
+    validateScheduleWithinPopupPeriod(popup, request.getScheduleDate());
+
     if (scheduleRepository.existOverlappingSchedule(
-            popup.getId(),
-            request.getScheduleDate(),
-            request.getStartTime(),
-            request.getEndTime()
-    )) {
+        popup.getId(), request.getScheduleDate(), request.getStartTime(), request.getEndTime())) {
       throw ScheduleErrorCode.SCHEDULE_TIME_OVERLAPPED.toException();
     }
 
@@ -70,28 +68,32 @@ public class ScheduleService {
       throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
     }
 
+    if (request.getIntervalMinutes() == null || request.getIntervalMinutes() <= 0) {
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
+    }
+
     Popup popup =
         popupRepository
             .findById(request.getPopupId())
             .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 팝업입니다."));
 
+    validateScheduleWithinPopupPeriod(popup, request.getScheduleDate());
+
     if (scheduleRepository.existOverlappingSchedule(
-            popup.getId(),
-            request.getScheduleDate(),
-            request.getOpenTime(),
-            request.getCloseTime())) {
+        popup.getId(), request.getScheduleDate(), request.getOpenTime(), request.getCloseTime())) {
       throw ScheduleErrorCode.SCHEDULE_TIME_OVERLAPPED.toException();
     }
 
     List<Schedule> schedules = new ArrayList<>();
     LocalTime currentStartTime = request.getOpenTime();
 
-    // openTime부터 시작해 interval 단위로 슬롯을 쪼갬
-    while (true) {
+    // openTime부터 시작해 interval 단위로 슬롯 생성
+    while (currentStartTime.isBefore(request.getCloseTime())) {
       LocalTime currentEndTime = currentStartTime.plusMinutes(request.getIntervalMinutes());
 
-      // 다음 종료 시각이 운영 종료 시각을 넘어서면 중단
-      if (currentEndTime.isAfter(request.getCloseTime())) {
+      // 다음 종료 시각이 운영 종료 시각을 넘어서거나, 24시 자정을 넘어 시간이 역전되는 경우 중단
+      if (currentEndTime.isAfter(request.getCloseTime())
+          || currentEndTime.isBefore(currentStartTime)) {
         break;
       }
 
@@ -104,14 +106,11 @@ public class ScheduleService {
               request.getMaxCapacity());
       schedules.add(schedule);
 
-      // 자정을 넘어가거나 closeTime에 도달한 경우
-      if (currentEndTime.equals(request.getCloseTime())
-          || currentEndTime.isBefore(currentStartTime)) {
-        break;
-      }
+      // 무한 루프 방지용. 다음 슬롯 생성을 위해 시작 시간을 현재 종료 시간으로 전진
       currentStartTime = currentEndTime;
     }
 
+    // 생성된 슬롯이 진짜 없는지 루프 끝나고 다시 검사
     if (schedules.isEmpty()) {
       throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
     }
@@ -142,5 +141,12 @@ public class ScheduleService {
     }
 
     scheduleRepository.delete(schedule);
+  }
+
+  // 팝업 운영 기간 유효성 검증 공통 메서드
+  private void validateScheduleWithinPopupPeriod(Popup popup, LocalDate scheduleDate) {
+    if (scheduleDate.isBefore(popup.getStartDate()) || scheduleDate.isAfter(popup.getEndDate())) {
+      throw new IllegalArgumentException("스케줄 날짜는 팝업 운영 기간 내여야 합니다.");
+    }
   }
 }
