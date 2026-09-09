@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: popnup-test
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: true
+
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+jwt:
+  secret: cG9wbnVwLXNlY3JldC1rZXktZm9yLXRlc3QtZW52aXJvbm1lbnQtMjAyNi12ZXJ5LXNhZmUtYW5kLXNlY3VyZQ==

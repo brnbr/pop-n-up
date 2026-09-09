@@ -9,4 +9,4 @@ spring:
     open-in-view: false
 
 jwt:
-  secret: ${JWT_SECRET:c29tZS1zZWNyZXQta2V5LXRlc3QtMTIzNDU2Nzg5MDEyMzQ1Njc4OTA=}
+  secret: ${JWT_SECRET:cG9wbnVwLXNlY3JldC1rZXktZm9yLXRlc3QtZW52aXJvbm1lbnQtMjAyNi12ZXJ5LXNhZmUtYW5kLXNlY3VyZQ==}

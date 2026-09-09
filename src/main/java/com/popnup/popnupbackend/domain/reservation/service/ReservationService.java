@@ -4,6 +4,9 @@ import com.fasterxml.uuid.Generators;
 import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.member.exception.MemberNotFoundException;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
+import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
+import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
+import com.popnup.popnupbackend.domain.qrcode.service.QrService;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
@@ -16,6 +19,7 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +33,7 @@ public class ReservationService {
   private final ReservationRepository reservationRepository;
   private final ScheduleRepository scheduleRepository;
   private final MemberRepository memberRepository;
+  private final QrService qrService;
 
   // 예약 생성
   @Transactional
@@ -36,7 +41,7 @@ public class ReservationService {
     Member member =
         memberRepository
             .findById(memberId)
-            .orElseThrow(() -> new MemberNotFoundException()); // 에러 처리 통일 필요
+            .orElseThrow(() -> new MemberNotFoundException()); // todo 에러 처리 통일 필요
 
     Schedule schedule =
         scheduleRepository
@@ -69,9 +74,8 @@ public class ReservationService {
         savedReservation.getId(), savedReservation.getReservationNumber());
   }
 
-  /* 결제 성공 시 예약 확정 처리
-    - 결제 도메인 도입 후 보완 필요
-  */
+  // todo 결제 성공 시 예약 확정 처리
+  // note QR 코드 생성 및 저장은 추가됨
   @Transactional
   public void confirmReservation(Long reservationId) {
     Reservation reservation =
@@ -79,6 +83,37 @@ public class ReservationService {
             .findById(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
     reservation.confirm();
+  }
+
+  // 동적 QR 이미지 제공
+  @Transactional(readOnly = true)
+  public byte[] getReservationQrCode(Long memberId, Long reservationId) {
+    Reservation reservation =
+        reservationRepository
+            .findById(reservationId)
+            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+
+    if (!reservation.isOwnedBy(memberId)) {
+      throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
+    }
+
+    if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
+
+    return qrService.generateQrCodeImage(reservation.getReservationNumber());
+  }
+
+  // note QR 스캔으로 체크인
+  @Transactional
+  public CheckInResponse checkIn(CheckInRequest request) {
+    Reservation reservation =
+        reservationRepository
+            .findByReservationNumber(request.getReservationNumber())
+            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+
+    reservation.checkIn();
+    return CheckInResponse.from(reservation);
   }
 
   // 예약 취소
@@ -89,21 +124,19 @@ public class ReservationService {
             .findById(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    if (!reservation.getMember().getId().equals(memberId)) {
+    if (!reservation.isOwnedBy(memberId)) {
       throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
-    }
-
-    if (reservation.getStatus() == ReservationStatus.CANCELED) {
-      throw ReservationErrorCode.ALREADY_CANCELED_RESERVATION.toException();
-    }
-
-    if (reservation.getStatus() == ReservationStatus.USED) {
-      throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
     }
 
     reservation.cancel();
 
-    Schedule schedule = reservation.getSchedule();
+    // 락 추가
+    Long scheduleId = reservation.getSchedule().getId();
+    Schedule schedule =
+        scheduleRepository
+            .findByIdWithPessimisticLock(scheduleId)
+            .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+
     schedule.cancelReservation(reservation.getPersonCount());
   }
 
@@ -119,7 +152,7 @@ public class ReservationService {
   @Transactional(readOnly = true)
   public ReservationResponse oneReservation(Long memberId, Long reservationId) {
     return reservationRepository
-        .findByIdAndMemberId(memberId, reservationId)
+        .findByIdAndMemberId(reservationId, memberId)
         .map(ReservationResponse::from)
         .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
   }
@@ -131,5 +164,25 @@ public class ReservationService {
     return reservationRepository.findAdminReservations(popupId, scheduleDate, status).stream()
         .map(AdminReservationResponse::from)
         .toList();
+  }
+
+  // 결제 타임아웃 시 예약 취소
+  @Transactional
+  public void payTimeOut() {
+    LocalDateTime deadLine = LocalDateTime.now().minusMinutes(10);
+
+    List<Reservation> deadReservations =
+        reservationRepository.findByStatusAndCreatedAtBefore(ReservationStatus.PENDING, deadLine);
+
+    for (Reservation dr : deadReservations) {
+      dr.cancel();
+
+      Long scheduleId = dr.getSchedule().getId();
+      Schedule schedule =
+          scheduleRepository
+              .findByIdWithPessimisticLock(scheduleId)
+              .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+      schedule.cancelReservation(dr.getPersonCount());
+    }
   }
 }
