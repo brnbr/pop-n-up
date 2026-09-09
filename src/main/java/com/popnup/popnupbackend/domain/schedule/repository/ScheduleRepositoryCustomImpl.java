@@ -5,6 +5,7 @@ import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 
@@ -23,5 +24,22 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
             schedule.isActive.isTrue())
         .orderBy(schedule.startTime.asc())
         .fetch();
+  }
+
+  @Override
+  public boolean existOverlappingSchedule(Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime) {
+    Integer fetchOne =
+            queryFactory
+                    .selectOne()
+                    .from(schedule)
+                    .where(
+                            schedule.popup.id.eq(popupId),
+                            schedule.scheduleDate.eq(scheduleDate),
+                            schedule.startTime.lt(endTime),  // 기존 시작 시각 < 신규 종료 시각
+                            schedule.endTime.gt(startTime)   // 기존 종료 시각 > 신규 시작 시각
+                    )
+                    .fetchFirst();
+
+    return fetchOne != null;
   }
 }
