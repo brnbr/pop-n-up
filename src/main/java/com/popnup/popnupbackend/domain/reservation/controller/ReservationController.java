@@ -48,15 +48,13 @@ public class ReservationController {
   }
 
   // 체크인
-  // todo QR을 받는걸로 수정해야 할 듯
-  @PostMapping("/reservations/check-in")
+  @PostMapping("/admin/reservations/check-in")
   public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
       @Valid @RequestBody CheckInRequest request) {
     return ResponseEntity.ok(ApiResponse.success(reservationService.checkIn(request)));
   }
 
   // 예약 취소
-  // todo 이미 예약한 거 취소니까 예약Number로 바꿔야할 듯
   @DeleteMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<Void>> deleteReservation(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
@@ -64,8 +62,7 @@ public class ReservationController {
     return ResponseEntity.ok(ApiResponse.success());
   }
 
-  // 전체 조회
-  // todo 이미 예약 한거면 예약Number로 바꿔야할 듯
+  // 예약 목록 전체 조회
   @GetMapping("/reservations")
   public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAll(
       @AuthenticationPrincipal AuthUser authUser) {
@@ -73,8 +70,7 @@ public class ReservationController {
         ApiResponse.success(reservationService.allReservations(authUser.getId())));
   }
 
-  // 단 건 조회
-  // todo 이미 예약 한거면 예약Number로 바꿔야할 듯
+  // 예약 단 건 조회
   @GetMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<ReservationResponse>> getOne(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
@@ -82,7 +78,7 @@ public class ReservationController {
         ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
   }
 
-  // 관리자 - 전체 조회
+  // 관리자 - 예약 목록 전체 조회
   @GetMapping("/admin/reservations")
   public ResponseEntity<ApiResponse<List<AdminReservationResponse>>> getAllAdmin(
       @RequestParam Long popupId,
