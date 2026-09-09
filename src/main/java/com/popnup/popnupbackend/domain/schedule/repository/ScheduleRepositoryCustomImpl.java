@@ -1,5 +1,6 @@
 package com.popnup.popnupbackend.domain.schedule.repository;
 
+import static com.popnup.popnupbackend.domain.popup.entity.QPopup.popup;
 import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule;
 
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
@@ -18,6 +19,8 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
   public List<Schedule> findActiveSchedulesByDate(Long popupId, LocalDate date) {
     return queryFactory
         .selectFrom(schedule)
+        .join(schedule.popup, popup)
+        .fetchJoin()
         .where(
             schedule.popup.id.eq(popupId),
             schedule.scheduleDate.eq(date),
@@ -27,18 +30,18 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
   }
 
   @Override
-  public boolean existOverlappingSchedule(Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime) {
+  public boolean existOverlappingSchedule(
+      Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime) {
     Integer fetchOne =
-            queryFactory
-                    .selectOne()
-                    .from(schedule)
-                    .where(
-                            schedule.popup.id.eq(popupId),
-                            schedule.scheduleDate.eq(scheduleDate),
-                            schedule.startTime.lt(endTime),  // 기존 시작 시각 < 신규 종료 시각
-                            schedule.endTime.gt(startTime)   // 기존 종료 시각 > 신규 시작 시각
-                    )
-                    .fetchFirst();
+        queryFactory
+            .selectOne()
+            .from(schedule)
+            .where(
+                schedule.popup.id.eq(popupId),
+                schedule.scheduleDate.eq(scheduleDate),
+                schedule.startTime.lt(endTime),
+                schedule.endTime.gt(startTime))
+            .fetchFirst();
 
     return fetchOne != null;
   }
