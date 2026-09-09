@@ -48,6 +48,7 @@ public class ReservationController {
   }
 
   // 체크인
+  // todo QR을 받는걸로 수정해야 할 듯
   @PostMapping("/reservations/check-in")
   public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
       @Valid @RequestBody CheckInRequest request) {
@@ -55,6 +56,7 @@ public class ReservationController {
   }
 
   // 예약 취소
+  // todo 이미 예약한 거 취소니까 예약Number로 바꿔야할 듯
   @DeleteMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<Void>> deleteReservation(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
@@ -63,6 +65,7 @@ public class ReservationController {
   }
 
   // 전체 조회
+  // todo 이미 예약 한거면 예약Number로 바꿔야할 듯
   @GetMapping("/reservations")
   public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAll(
       @AuthenticationPrincipal AuthUser authUser) {
@@ -71,6 +74,7 @@ public class ReservationController {
   }
 
   // 단 건 조회
+  // todo 이미 예약 한거면 예약Number로 바꿔야할 듯
   @GetMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<ReservationResponse>> getOne(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {

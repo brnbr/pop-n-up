@@ -13,7 +13,7 @@ import org.springframework.data.repository.query.Param;
 public interface ScheduleRepository
     extends JpaRepository<Schedule, Long>, ScheduleRepositoryCustom {
 
-  // 오버부킹 방지용 비관적 락
+  // 오버부킹 방지용
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @QueryHints({@QueryHint(name = "jakarta.persistence.lock.timeout", value = "3000")})
   @Query("SELECT s FROM Schedule s WHERE s.id = :id")
