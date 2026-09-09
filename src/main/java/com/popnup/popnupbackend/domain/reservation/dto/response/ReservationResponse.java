@@ -14,7 +14,7 @@ public class ReservationResponse {
   private final String reservationNumber;
   private final ReservationStatus status;
   private final LocalDateTime bookedDayTime;
-  private final Integer personCound;
+  private final Integer personCount;
 
   public static ReservationResponse from(Reservation reservation) {
     return new ReservationResponse(
