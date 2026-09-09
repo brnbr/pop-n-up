@@ -19,7 +19,9 @@ public enum ScheduleErrorCode implements ErrorCode {
   INVALID_CANCEL_COUNT(HttpStatus.BAD_REQUEST, "취소하려는 인원이 현재 예약된 인원보다 많습니다."),
 
   SCHEDULE_INACTIVE(HttpStatus.CONFLICT, "해당 타임 슬롯은 현재 예약이 불가능합니다."),
-  CANNOT_DELETE_RESERVED_SCHEDULE(HttpStatus.CONFLICT, "이미 예약자가 존재하는 스케줄은 삭제할 수 없습니다.");
+  CANNOT_DELETE_RESERVED_SCHEDULE(HttpStatus.CONFLICT, "이미 예약자가 존재하는 스케줄은 삭제할 수 없습니다."),
+
+  SCHEDULE_TIME_OVERLAPPED(HttpStatus.CONFLICT, "이미 등록된 스케줄과 시간이 겹칩니다.");
 
   private final HttpStatus httpStatus;
   private final String message;
