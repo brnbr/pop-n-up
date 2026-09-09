@@ -3,6 +3,7 @@ package com.popnup.popnupbackend.domain.reservation.repository;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,4 +20,7 @@ public interface ReservationRepositoryCustom {
 
   // 체크인 단 건 조회
   Optional<Reservation> findByReservationNumber(String reservationNumber);
+
+  // 만료 예약 찾기
+  List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime);
 }
