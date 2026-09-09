@@ -10,6 +10,7 @@ import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -75,6 +76,22 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
             .fetchOne();
 
     return Optional.ofNullable(result);
+  }
+
+  @Override
+  public List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime) {
+    return queryFactory
+        .selectFrom(reservation)
+        .join(reservation.schedule, schedule)
+        .fetchJoin()
+        .where(
+            reservation.status.eq(ReservationStatus.CONFIRMED),
+            // 오늘 이전 날짜이거나, 오늘 날짜이면서 종료 시각이 지난 경우
+            schedule
+                .scheduleDate
+                .lt(today)
+                .or(schedule.scheduleDate.eq(today).and(schedule.endTime.before(currentTime))))
+        .fetch();
   }
 
   // dsl 적용 후 삭제
