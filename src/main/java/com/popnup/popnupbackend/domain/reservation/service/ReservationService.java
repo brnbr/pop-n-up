@@ -20,20 +20,24 @@ import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReservationService {
 
   private final ReservationRepository reservationRepository;
   private final ScheduleRepository scheduleRepository;
   private final MemberRepository memberRepository;
   private final QrService qrService;
+  private final ReservationTimeoutProcessor reservationTimeoutProcessor;
 
   // 예약 생성
   @Transactional
@@ -166,23 +170,44 @@ public class ReservationService {
         .toList();
   }
 
-  // 결제 타임아웃 시 예약 취소
-  @Transactional
+  // 결제 타임아웃 시 예약 취소 - 스케줄러 호출용
   public void payTimeOut() {
     LocalDateTime deadLine = LocalDateTime.now().minusMinutes(10);
 
     List<Reservation> deadReservations =
         reservationRepository.findByStatusAndCreatedAtBefore(ReservationStatus.PENDING, deadLine);
 
-    for (Reservation dr : deadReservations) {
-      dr.cancel();
+    if (deadReservations.isEmpty()) {
+      return;
+    }
 
-      Long scheduleId = dr.getSchedule().getId();
-      Schedule schedule =
-          scheduleRepository
-              .findByIdWithPessimisticLock(scheduleId)
-              .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
-      schedule.cancelReservation(dr.getPersonCount());
+    log.info("[paytimeOut] 만료 대상: {}건", deadReservations.size());
+
+    for (Reservation dr : deadReservations) {
+      try {
+        reservationTimeoutProcessor.cancelSingleTimeoutReservation(dr.getId());
+      } catch (Exception e) {
+        log.error("[payTimeOut] 예약 단건 만료 처리 실패 (ID: {})", dr.getId(), e);
+      }
+    }
+  }
+
+  // 미사용 예약 만료 상태 변경
+  @Transactional
+  public void expirePastReservation() {
+    LocalDate today = LocalDate.now();
+    LocalTime nowTime = LocalTime.now();
+
+    List<Reservation> expiredList = reservationRepository.findExpiredReservations(today, nowTime);
+
+    if (expiredList.isEmpty()) {
+      return;
+    }
+
+    log.info("[expiredPastReservation] 만료 처리 대상 건수: {}건", expiredList.size());
+
+    for (Reservation reservation : expiredList) {
+      reservation.expired();
     }
   }
 }
