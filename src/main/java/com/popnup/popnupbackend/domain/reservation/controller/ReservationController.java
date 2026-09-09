@@ -1,6 +1,8 @@
 package com.popnup.popnupbackend.domain.reservation.controller;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
+import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
+import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
@@ -13,6 +15,8 @@ import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -25,11 +29,29 @@ public class ReservationController {
 
   // 예약 생성
   @PostMapping("/reservations")
-  public ResponseEntity<ApiResponse<ReservationCreateResponse>> createResrvation(
+  public ResponseEntity<ApiResponse<ReservationCreateResponse>> createReservation(
       @AuthenticationPrincipal AuthUser authUser,
       @Valid @RequestBody ReservationCreateRequest request) {
     return ResponseEntity.ok(
         ApiResponse.success(reservationService.book(authUser.getId(), request)));
+  }
+
+  // qr 생성
+  @GetMapping(value = "/reservations/{reservationId}/qr", produces = MediaType.IMAGE_PNG_VALUE)
+  public ResponseEntity<byte[]> getReservationQr(
+      @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
+    byte[] qrImageBytes = reservationService.getReservationQrCode(authUser.getId(), reservationId);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore().mustRevalidate())
+        .contentType(MediaType.IMAGE_PNG)
+        .body(qrImageBytes);
+  }
+
+  // 체크인
+  @PostMapping("/reservations/check-in")
+  public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
+      @Valid @RequestBody CheckInRequest request) {
+    return ResponseEntity.ok(ApiResponse.success(reservationService.checkIn(request)));
   }
 
   // 예약 취소
@@ -51,7 +73,7 @@ public class ReservationController {
   // 단 건 조회
   @GetMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<ReservationResponse>> getOne(
-      @AuthenticationPrincipal AuthUser authUser, @Valid @PathVariable Long reservationId) {
+      @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
     return ResponseEntity.ok(
         ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
   }

@@ -51,6 +51,10 @@ dependencies {
 
     //UUID version 7
     implementation 'com.fasterxml.uuid:java-uuid-generator:4.3.0'
+
+    //ZXing
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.google.zxing:javase:3.5.3'
 }
 
 tasks.named('test') {

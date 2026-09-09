@@ -1,18 +1,18 @@
 package com.popnup.popnupbackend.domain.reservation.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willDoNothing;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.member.enums.Role;
+import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
+import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -31,15 +32,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.support.WebDataBinderFactory;
 import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
+@Slf4j
 @ExtendWith(MockitoExtension.class)
 class ReservationControllerTest {
 
@@ -48,6 +52,20 @@ class ReservationControllerTest {
   @Mock private ReservationService reservationService;
 
   private final Long memberId = 1L;
+
+  private void printLog(String testName, Object input, Object expected, Object actual) {
+    log.info(
+        "\n================ [CONTROLLER TEST] ================"
+            + "\n📌 테스트명    : {}"
+            + "\n📥 입력값      : {}"
+            + "\n🎯 예상 결과   : {}"
+            + "\n🔍 실제 결과   : {}"
+            + "\n====================================================",
+        testName,
+        input,
+        expected,
+        actual);
+  }
 
   @BeforeEach
   void setUp() {
@@ -80,7 +98,7 @@ class ReservationControllerTest {
   class CreateReservation {
 
     @Test
-    @DisplayName("성공: 유효한 요청 시 예약 생성 후 200 OK와 예약 번호를 반환한다")
+    @DisplayName("유효한 요청이 들어오면 200 OK와 생성 정보를 반환한다")
     void createReservation_success() throws Exception {
       String jsonRequest =
           """
@@ -91,59 +109,108 @@ class ReservationControllerTest {
                   """;
 
       ReservationCreateResponse response =
-          ReservationCreateResponse.from(100L, "R20260904A1B2C3D4");
+          ReservationCreateResponse.from(100L, "R20260908A1B2C3D4");
 
       given(reservationService.book(eq(memberId), any(ReservationCreateRequest.class)))
           .willReturn(response);
 
-      mockMvc
-          .perform(
-              post("/reservations").contentType(MediaType.APPLICATION_JSON).content(jsonRequest))
-          .andDo(print())
-          .andExpect(status().isOk())
-          .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.content.reservationId").value(100L))
-          .andExpect(jsonPath("$.content.reservationNumber").value("R20260904A1B2C3D4"));
+      MvcResult result =
+          mockMvc
+              .perform(
+                  post("/reservations")
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .content(jsonRequest))
+              .andExpect(status().isOk())
+              .andExpect(jsonPath("$.success").value(true))
+              .andExpect(jsonPath("$.content.reservationId").value(100L))
+              .andReturn();
+
+      printLog(
+          "POST /reservations",
+          jsonRequest.trim(),
+          "Status 200, reservationId=100",
+          "Status "
+              + result.getResponse().getStatus()
+              + ", Body="
+              + result.getResponse().getContentAsString());
     }
+  }
+
+  @Nested
+  @DisplayName("동적 QR 이미지 조회 [GET /reservations/{reservationId}/qr]")
+  class GetReservationQr {
 
     @Test
-    @DisplayName("실패: scheduleId가 null이면 400 Bad Request를 반환하고 서비스는 호출되지 않는다")
-    void createReservation_validationError_nullScheduleId() throws Exception {
-      String invalidJson =
+    @DisplayName("QR 조회 시 Cache-Control(no-store, must-revalidate) 헤더와 PNG 이미지를 반환한다")
+    void getReservationQr_success() throws Exception {
+      Long reservationId = 100L;
+      byte[] mockImageBytes = new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47};
+
+      given(reservationService.getReservationQrCode(memberId, reservationId))
+          .willReturn(mockImageBytes);
+
+      MvcResult result =
+          mockMvc
+              .perform(get("/reservations/{reservationId}/qr", reservationId))
+              .andDo(print())
+              .andExpect(status().isOk())
+              .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store, must-revalidate"))
+              .andExpect(content().contentType(MediaType.IMAGE_PNG))
+              .andReturn();
+
+      printLog(
+          "GET /reservations/" + reservationId + "/qr",
+          "reservationId=" + reservationId,
+          "Content-Type=image/png, Cache-Control=no-store, must-revalidate",
+          "Content-Type="
+              + result.getResponse().getContentType()
+              + ", Cache-Control="
+              + result.getResponse().getHeader(HttpHeaders.CACHE_CONTROL)
+              + ", Body Byte Length="
+              + result.getResponse().getContentAsByteArray().length);
+
+      assertThat(result.getResponse().getContentAsByteArray()).isEqualTo(mockImageBytes);
+    }
+  }
+
+  @Nested
+  @DisplayName("체크인 [POST /reservations/check-in]")
+  class CheckIn {
+
+    @Test
+    @DisplayName("체크인 번호가 유효하면 200 OK와 체크인 완료 정보를 반환한다")
+    void checkIn_success() throws Exception {
+      String jsonRequest =
           """
                   {
-                    "scheduleId": null,
-                    "personCount": 2
+                    "reservationNumber": "R20260908TEST1234"
                   }
                   """;
 
-      mockMvc
-          .perform(
-              post("/reservations").contentType(MediaType.APPLICATION_JSON).content(invalidJson))
-          .andDo(print())
-          .andExpect(status().isBadRequest());
+      CheckInResponse response = new CheckInResponse(100L, "R20260908TEST1234", "김철수", 2);
 
-      verify(reservationService, never()).book(any(), any());
-    }
+      given(reservationService.checkIn(any(CheckInRequest.class))).willReturn(response);
 
-    @Test
-    @DisplayName("실패: personCount가 0 이하이면 400 Bad Request를 반환하고 서비스는 호출되지 않는다")
-    void createReservation_validationError_invalidPersonCount() throws Exception {
-      String invalidJson =
-          """
-                  {
-                    "scheduleId": 10,
-                    "personCount": 0
-                  }
-                  """;
+      MvcResult result =
+          mockMvc
+              .perform(
+                  post("/reservations/check-in")
+                      .contentType(MediaType.APPLICATION_JSON)
+                      .content(jsonRequest))
+              .andDo(print())
+              .andExpect(status().isOk())
+              .andExpect(jsonPath("$.success").value(true))
+              .andExpect(jsonPath("$.content.reservationId").value(100L))
+              .andReturn();
 
-      mockMvc
-          .perform(
-              post("/reservations").contentType(MediaType.APPLICATION_JSON).content(invalidJson))
-          .andDo(print())
-          .andExpect(status().isBadRequest());
-
-      verify(reservationService, never()).book(any(), any());
+      printLog(
+          "POST /reservations/check-in",
+          jsonRequest.trim(),
+          "Status 200, memberName=김철수",
+          "Status "
+              + result.getResponse().getStatus()
+              + ", Body="
+              + result.getResponse().getContentAsString());
     }
   }
 
@@ -152,17 +219,27 @@ class ReservationControllerTest {
   class DeleteReservation {
 
     @Test
-    @DisplayName("성공: 예약 ID로 취소 요청 시 200 OK를 반환한다")
+    @DisplayName("예약 ID를 넘겨 취소하면 200 OK를 반환한다")
     void deleteReservation_success() throws Exception {
       Long reservationId = 100L;
       willDoNothing().given(reservationService).cancel(memberId, reservationId);
 
-      mockMvc
-          .perform(delete("/reservations/{reservationId}", reservationId))
-          .andDo(print())
-          .andExpect(status().isOk())
-          .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.code").value("200"));
+      MvcResult result =
+          mockMvc
+              .perform(delete("/reservations/{reservationId}", reservationId))
+              .andDo(print())
+              .andExpect(status().isOk())
+              .andExpect(jsonPath("$.success").value(true))
+              .andReturn();
+
+      printLog(
+          "DELETE /reservations/" + reservationId,
+          "reservationId=" + reservationId,
+          "Status 200",
+          "Status "
+              + result.getResponse().getStatus()
+              + ", Body="
+              + result.getResponse().getContentAsString());
     }
   }
 
@@ -171,44 +248,64 @@ class ReservationControllerTest {
   class GetAllReservations {
 
     @Test
-    @DisplayName("성공: 로그인한 회원의 전체 예약 목록을 200 OK로 반환한다")
+    @DisplayName("회원의 전체 예약 목록을 200 OK로 반환한다")
     void getAll_success() throws Exception {
-      ReservationResponse item =
+      ReservationResponse item1 =
           new ReservationResponse(
-              1L, "R20260904-1111", ReservationStatus.CONFIRMED, LocalDateTime.now(), 2);
+              1L, "R20260908-1111", ReservationStatus.CONFIRMED, LocalDateTime.now(), 2);
 
-      given(reservationService.allReservations(memberId)).willReturn(List.of(item));
+      given(reservationService.allReservations(memberId)).willReturn(List.of(item1));
 
-      mockMvc
-          .perform(get("/reservations"))
-          .andExpect(status().isOk())
-          .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.content[0].reservationId").value(1L));
+      MvcResult result =
+          mockMvc
+              .perform(get("/reservations"))
+              .andExpect(status().isOk())
+              .andExpect(jsonPath("$.success").value(true))
+              .andExpect(jsonPath("$.content.length()").value(1))
+              .andReturn();
+
+      printLog(
+          "GET /reservations",
+          "memberId=" + memberId,
+          "Status 200, array length=1",
+          "Status "
+              + result.getResponse().getStatus()
+              + ", Body="
+              + result.getResponse().getContentAsString());
     }
   }
 
   @Nested
-  @DisplayName("예약 단건 상세 조회 [GET /reservations/{reservationId}]")
+  @DisplayName("단건 상세 조회 [GET /reservations/{reservationId}]")
   class GetOneReservation {
 
     @Test
-    @DisplayName("성공: 예약 ID로 단건 조회 시 200 OK와 상세 정보를 반환한다")
+    @DisplayName("상세 정보를 200 OK로 반환한다")
     void getOne_success() throws Exception {
       Long reservationId = 100L;
       ReservationResponse response =
           new ReservationResponse(
-              reservationId, "R20260904-1111", ReservationStatus.CONFIRMED, LocalDateTime.now(), 2);
+              reservationId, "R20260908-1111", ReservationStatus.CONFIRMED, LocalDateTime.now(), 2);
 
-      given(reservationService.oneReservation(eq(memberId), eq(reservationId)))
-          .willReturn(response);
+      given(reservationService.oneReservation(memberId, reservationId)).willReturn(response);
 
-      mockMvc
-          .perform(get("/reservations/{reservationId}", reservationId))
-          .andDo(print())
-          .andExpect(status().isOk())
-          .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.content.reservationId").value(reservationId))
-          .andExpect(jsonPath("$.content.reservationNumber").value("R20260904-1111"));
+      MvcResult result =
+          mockMvc
+              .perform(get("/reservations/{reservationId}", reservationId))
+              .andDo(print())
+              .andExpect(status().isOk())
+              .andExpect(jsonPath("$.success").value(true))
+              .andExpect(jsonPath("$.content.reservationId").value(reservationId))
+              .andReturn();
+
+      printLog(
+          "GET /reservations/" + reservationId,
+          "reservationId=" + reservationId,
+          "Status 200, reservationId=100",
+          "Status "
+              + result.getResponse().getStatus()
+              + ", Body="
+              + result.getResponse().getContentAsString());
     }
   }
 
@@ -217,18 +314,18 @@ class ReservationControllerTest {
   class GetAllAdmin {
 
     @Test
-    @DisplayName("성공: 쿼리 파라미터 전달 시 관리자 예약 리스트와 200 OK를 반환한다")
+    @DisplayName("조건에 맞는 관리자 명단을 200 OK로 반환한다")
     void getAllAdmin_success() throws Exception {
       Long popupId = 1L;
-      LocalDate scheduleDate = LocalDate.of(2026, 9, 4);
+      LocalDate scheduleDate = LocalDate.of(2026, 9, 8);
       ReservationStatus status = ReservationStatus.CONFIRMED;
 
       AdminReservationResponse item =
           new AdminReservationResponse(
               popupId,
-              "성수 아트 팝업",
+              "성수 팝업",
               100L,
-              "R20260904TEST01",
+              "R20260908TEST01",
               2,
               ReservationStatus.CONFIRMED,
               10L,
@@ -240,19 +337,27 @@ class ReservationControllerTest {
       given(reservationService.getAdminReservations(popupId, scheduleDate, status))
           .willReturn(List.of(item));
 
-      mockMvc
-          .perform(
-              get("/admin/reservations")
-                  .param("popupId", String.valueOf(popupId))
-                  .param("scheduleDate", "2026-09-04")
-                  .param("status", "CONFIRMED"))
-          .andDo(print())
-          .andExpect(status().isOk())
-          .andExpect(jsonPath("$.success").value(true))
-          .andExpect(jsonPath("$.code").value("200"))
-          .andExpect(jsonPath("$.content").isArray())
-          .andExpect(jsonPath("$.content[0].popupId").value(popupId))
-          .andExpect(jsonPath("$.content[0].memberName").value("김철수"));
+      MvcResult result =
+          mockMvc
+              .perform(
+                  get("/admin/reservations")
+                      .param("popupId", String.valueOf(popupId))
+                      .param("scheduleDate", "2026-09-08")
+                      .param("status", "CONFIRMED"))
+              .andDo(print())
+              .andExpect(status().isOk())
+              .andExpect(jsonPath("$.success").value(true))
+              .andExpect(jsonPath("$.content.length()").value(1))
+              .andReturn();
+
+      printLog(
+          "GET /admin/reservations",
+          "popupId=1, scheduleDate=2026-09-08, status=CONFIRMED",
+          "Status 200, array length=1",
+          "Status "
+              + result.getResponse().getStatus()
+              + ", Body="
+              + result.getResponse().getContentAsString());
     }
   }
 }

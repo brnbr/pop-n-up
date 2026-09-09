@@ -34,9 +34,6 @@ public class Reservation extends BaseEntity {
   @Column(nullable = false)
   private Integer personCount;
 
-  @Column(length = 500)
-  private String qrCodeUrl;
-
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 30)
   private ReservationStatus status;
@@ -61,9 +58,10 @@ public class Reservation extends BaseEntity {
         reservationNumber, member, schedule, personCount, ReservationStatus.PENDING);
   }
 
-  /* 결제 후 예약 최종 확정
-    - 결제 도메인 도입 후 보완 필요
-    - 결제 결과 받아서 상태/유효성 확인 후 confirm 처리
+  /* todo
+      결제 후 예약 최종 확정
+      결제 도메인 도입 후 보완 필요
+      결제 결과 받아서 상태/유효성 확인 후 confirm 처리
   */
   public void confirm() {
     if (this.status != ReservationStatus.PENDING) {
@@ -73,9 +71,16 @@ public class Reservation extends BaseEntity {
     this.status = ReservationStatus.CONFIRMED;
   }
 
-  // qr 발급
-  public void registerQrCode(String qrCodeUrl) {
-    this.qrCodeUrl = qrCodeUrl;
+  // qr 체크인
+  public void checkIn() {
+    if (this.status == ReservationStatus.USED) {
+      throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
+    }
+    if (this.status != ReservationStatus.CONFIRMED) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
+
+    this.status = ReservationStatus.USED;
   }
 
   // 예약 취소
@@ -84,6 +89,19 @@ public class Reservation extends BaseEntity {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
     }
 
+    if (this.status == ReservationStatus.USED) {
+      throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
+    }
+
     this.status = ReservationStatus.CANCELED;
+  }
+
+  // 소유자 확인
+  public boolean isOwnedBy(Long memberId) {
+    if (memberId == null || this.member == null) {
+      return false;
+    }
+
+    return memberId.equals(this.member.getId());
   }
 }

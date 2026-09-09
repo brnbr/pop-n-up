@@ -17,6 +17,6 @@ public interface ReservationRepositoryCustom {
   List<Reservation> findAdminReservations(
       Long popupId, LocalDate scheduleDate, ReservationStatus status);
 
-  // 사용자 - 단 건 조회
-  Optional<Reservation> findByIdAndMemberId(Long reservationId, Long memberId);
+  // 체크인 단 건 조회
+  Optional<Reservation> findByReservationNumber(String reservationNumber);
 }

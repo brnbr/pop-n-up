@@ -65,11 +65,13 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   }
 
   @Override
-  public Optional<Reservation> findByIdAndMemberId(Long reservationId, Long memberId) {
+  public Optional<Reservation> findByReservationNumber(String reservationNumber) {
     Reservation result =
         queryFactory
             .selectFrom(reservation)
-            .where(reservation.id.eq(reservationId), reservation.member.id.eq(memberId))
+            .join(reservation.member, member)
+            .fetchJoin()
+            .where(reservation.reservationNumber.eq(reservationNumber))
             .fetchOne();
 
     return Optional.ofNullable(result);
