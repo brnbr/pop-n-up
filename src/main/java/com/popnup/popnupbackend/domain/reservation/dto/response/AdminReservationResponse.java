@@ -16,9 +16,9 @@ public class AdminReservationResponse {
   private final String popupTitle;
 
   // 예약 정보
-  private final Long reservationid;
+  private final Long reservationId;
   private final String reservationNumber;
-  private final Integer personcount;
+  private final Integer personCount;
   private final ReservationStatus status;
 
   // 예약자 정보
