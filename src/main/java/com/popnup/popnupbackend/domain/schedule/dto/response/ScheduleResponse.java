@@ -11,7 +11,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ScheduleResponse {
 
-  private final Long id;
+  private final Long scheduleId;
+  private final String popupTitle;
   private final LocalDate scheduleDate;
   private final LocalTime startTime;
   private final LocalTime endTime;
@@ -30,6 +31,7 @@ public class ScheduleResponse {
 
     return new ScheduleResponse(
         schedule.getId(),
+        schedule.getPopup().getTitle(),
         schedule.getScheduleDate(),
         schedule.getStartTime(),
         schedule.getEndTime(),
@@ -37,7 +39,7 @@ public class ScheduleResponse {
         schedule.getNowCapacity(),
         remaining,
         schedule.isActive(),
-        started,
-        available);
+        available,
+        started);
   }
 }
