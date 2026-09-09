@@ -8,5 +8,6 @@ import java.util.List;
 public interface ScheduleRepositoryCustom {
   List<Schedule> findActiveSchedulesByDate(Long popupId, LocalDate date);
 
-  boolean existOverlappingSchedule(Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime);
+  boolean existOverlappingSchedule(
+      Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime);
 }
