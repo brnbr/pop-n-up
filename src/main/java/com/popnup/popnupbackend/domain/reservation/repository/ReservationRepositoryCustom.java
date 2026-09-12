@@ -23,4 +23,6 @@ public interface ReservationRepositoryCustom {
 
   // 만료 예약 찾기
   List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime);
+
+  Optional<Reservation> findByReservationNumberWithPessimisticLock(String reservationNumber);
 }
