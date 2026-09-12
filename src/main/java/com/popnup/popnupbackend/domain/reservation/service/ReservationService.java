@@ -131,7 +131,7 @@ public class ReservationService {
       throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
     }
 
-    reservationCancelManager.cancel(reservation);
+    reservationCancelManager.cancel(reservationId);
   }
 
   // 예약 목록 전체 조회

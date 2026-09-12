@@ -48,7 +48,6 @@ public class ReservationTimeoutProcessor {
             .findById(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    // PENDING 상태일 때만 타임아웃 취소 진행
     if (reservation.getStatus() != ReservationStatus.PENDING) {
       return;
     }
