@@ -14,6 +14,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
+
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
@@ -95,6 +97,14 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
                 .lt(today)
                 .or(schedule.scheduleDate.eq(today).and(schedule.endTime.lt(currentTime))))
         .fetch();
+  }
+
+  @Override
+  public Optional<Reservation> findByReservationNumberWithPessimisticLock(String reservationNumber) {
+    Reservation result = queryFactory.selectFrom(reservation).where(reservation.reservationNumber.eq(reservationNumber))
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne();
+
+    return Optional.ofNullable(result);
   }
 
   // dsl 적용 후 삭제
