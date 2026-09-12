@@ -84,13 +84,17 @@ public class Schedule extends BaseEntity {
   }
 
   // 예약 인원 추가
-  public void addReservation(int count) {
+  public void addReservation(int count, LocalDateTime currentDateTime) {
     if (count <= 0) {
       throw ScheduleErrorCode.INVALID_CAPACITY.toException();
     }
 
     if (!this.isActive) {
       throw ScheduleErrorCode.SCHEDULE_INACTIVE.toException();
+    }
+
+    if (isAlreadyStarted(currentDateTime)) {
+      throw ScheduleErrorCode.SCHEDULE_ALREADY_STARTED.toException();
     }
 
     if (this.nowCapacity + count > this.maxCapacity) {
