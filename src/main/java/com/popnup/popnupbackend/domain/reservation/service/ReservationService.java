@@ -19,6 +19,7 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -44,7 +45,7 @@ public class ReservationService {
     Member member =
         memberRepository
             .findById(memberId)
-            .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException); // todo 에러 처리 통일 필요
+            .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
 
     Schedule schedule =
         scheduleRepository
@@ -55,7 +56,7 @@ public class ReservationService {
       throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
     }
 
-    schedule.addReservation(request.getPersonCount());
+    schedule.addReservation(request.getPersonCount(), LocalDateTime.now());
 
     String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
     String timeUUID =
