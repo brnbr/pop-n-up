@@ -53,6 +53,6 @@ public class ReservationTimeoutProcessor {
       return;
     }
 
-    reservationCancelManager.cancel(reservation);
+    reservationCancelManager.cancel(reservationId);
   }
 }
