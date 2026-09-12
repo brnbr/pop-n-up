@@ -112,4 +112,10 @@ public class Member extends BaseEntity {
   public void delete() {
     this.status = MemberStatus.DELETED;
   }
+
+  public void updateOAuth2(String providerId) {
+    this.provider = Provider.KAKAO;
+    this.providerId = providerId;
+    this.password = null;
+  }
 }

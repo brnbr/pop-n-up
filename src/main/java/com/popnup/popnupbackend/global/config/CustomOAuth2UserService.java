@@ -39,12 +39,17 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     Optional<Member> optionalMember = memberRepository.findByEmail(email);
     Member member;
     if (optionalMember.isPresent()) {
+      // 기존 회원이면 Kakao 회원으로 전환
       member = optionalMember.get();
-    } else {
-      member = Member.createOAuth2(email, nickname, providerId);
+      member.validateActive();
+      member.updateOAuth2(providerId);
 
+    } else {
+      // 기존 회원이 없으면 Kakao 회원으로 가입
+      member = Member.createOAuth2(email, nickname, providerId);
       memberRepository.save(member);
     }
+
 
     return new CustomOAuth2User(member, attributes);
   }
