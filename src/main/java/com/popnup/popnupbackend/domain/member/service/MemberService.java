@@ -49,7 +49,8 @@ public class MemberService {
       throw MemberErrorCode.PASSWORD_NOT_MATCH.toException();
     }
 
-    member.updatePassword(request.getNewPassword());
+    String encodedNewPassword = passwordEncoder.encode(request.getNewPassword());
+    member.updatePassword(encodedNewPassword);
   }
 
   @Transactional
