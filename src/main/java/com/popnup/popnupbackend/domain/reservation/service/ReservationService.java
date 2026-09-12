@@ -112,7 +112,7 @@ public class ReservationService {
   public CheckInResponse checkIn(CheckInRequest request) {
     Reservation reservation =
         reservationRepository
-            .findByReservationNumber(request.getReservationNumber())
+            .findByReservationNumberWithPessimisticLock(request.getReservationNumber())
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
     reservation.checkIn();
