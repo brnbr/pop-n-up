@@ -5,6 +5,7 @@ import com.popnup.popnupbackend.domain.member.enums.Role;
 import com.popnup.popnupbackend.global.error.AuthErrorCode;
 import com.popnup.popnupbackend.global.error.ServiceException;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -59,9 +60,14 @@ public class JwtFilter extends OncePerRequestFilter {
         return;
       }
       authenticate(token, request);
+    } catch (ExpiredJwtException e) {
+      sendUnauthorized(response, AuthErrorCode.EXPIRED_TOKEN);
+      return;
+
     } catch (JwtException e) {
       sendUnauthorized(response, AuthErrorCode.INVALID_TOKEN);
       return;
+
     } catch (ServiceException e) {
       sendUnauthorized(response, (AuthErrorCode) e.getErrorCode());
       return;

@@ -45,54 +45,85 @@ public class SecurityConfig {
         .logout(AbstractHttpConfigurer::disable) // 서버 세션을 무효화하는 로그아웃 방식이 아닌 JWT 폐기 방식을 사용함
         .rememberMe(AbstractHttpConfigurer::disable) // 자동 로그인을 위한 Remember-Me 쿠키를 발급하지 않음
         .exceptionHandling(
-            exception ->
-                exception
-                    .authenticationEntryPoint(
-                        (request, response, cause) ->
-                            sendError(
-                                response,
-                                HttpServletResponse.SC_UNAUTHORIZED,
-                                "Authorization 헤더에 JWT가 필요합니다."))
-                    .accessDeniedHandler(
-                        (request, response, cause) ->
-                            sendError(response, HttpServletResponse.SC_FORBIDDEN, "접근 권한이 없습니다.")))
+                exception ->
+                        exception
+                                // 인증되지 않은 사용자가 접근했을 때 → 401
+                                .authenticationEntryPoint(
+                                        (request, response, cause) -> {
+                                          String authorization = request.getHeader("Authorization");
+
+                                          // Authorization 헤더 자체가 없는 경우
+                                          if (authorization == null) {
+                                            sendError(
+                                                    response,
+                                                    HttpServletResponse.SC_UNAUTHORIZED,
+                                                    "Authorization 헤더가 없습니다.");
+                                            return;
+                                          }
+
+                                          // Bearer 형식이 아닌 경우
+                                          if (!authorization.startsWith("Bearer ")) {
+                                            sendError(
+                                                    response,
+                                                    HttpServletResponse.SC_UNAUTHORIZED,
+                                                    "Authorization 헤더 형식이 올바르지 않습니다.");
+                                            return;
+                                          }
+
+                                          // 헤더는 있지만 인증에 실패한 경우
+                                          sendError(
+                                                  response,
+                                                  HttpServletResponse.SC_UNAUTHORIZED,
+                                                  "인증에 실패했습니다.");
+                                        })
+
+                                // 인증은 됐지만 권한이 부족할 때 → 403
+                                .accessDeniedHandler(
+                                        (request, response, cause) ->
+                                                sendError(
+                                                        response,
+                                                        HttpServletResponse.SC_FORBIDDEN,
+                                                        "접근 권한이 없습니다.")))
+
+        // URL별 접근 권한 설정
         .authorizeHttpRequests(
-            auth ->
-                auth.requestMatchers("/h2-console/**")
-                    .permitAll()
-                    .requestMatchers(
-                        "/api/v1/kakao-pay/approve",
-                        "/api/v1/kakao-pay/cancel",
-                        "/api/v1/kakao-pay/fail")
-                    .permitAll()
-                    .requestMatchers(HttpMethod.POST, "/auth/signin")
-                    .permitAll()
-                    .requestMatchers(HttpMethod.POST, "/auth/signup")
-                    .permitAll()
-                    .requestMatchers(HttpMethod.GET, "/members")
-                    .permitAll()
-                    .requestMatchers(HttpMethod.POST, "/api/gatherings")
-                    .permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/health")
-                    .permitAll()
-                    .requestMatchers("/oauth2/**", "/login/**")
-                    .permitAll()
-                    .requestMatchers(HttpMethod.GET, "/admin/**")
-                    .hasRole("ADMIN")
-                    .requestMatchers("/oauth2/**")
-                    .permitAll()
-                    .requestMatchers("/login/oauth2/**")
-                    .permitAll()
-                    .requestMatchers("/redis/**")
-                    .permitAll()
-                    .anyRequest()
-                    .authenticated())
+                auth ->
+                        auth.requestMatchers("/h2-console/**")
+                                .permitAll()
+                                .requestMatchers(
+                                        "/api/v1/kakao-pay/approve",
+                                        "/api/v1/kakao-pay/cancel",
+                                        "/api/v1/kakao-pay/fail")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.POST, "/auth/signin")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.POST, "/auth/signup")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/members")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.POST, "/api/gatherings")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/v1/health")
+                                .permitAll()
+                                .requestMatchers("/oauth2/**", "/login/**")
+                                .permitAll()
+                                .requestMatchers(HttpMethod.GET, "/admin/**")
+                                .hasRole("ADMIN")
+                                .requestMatchers("/redis/**")
+                                .permitAll()
+                                .anyRequest()
+                                .authenticated())
+
+        // OAuth2 로그인
         .oauth2Login(
-            oauth2 ->
-                oauth2
-                    .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
-                    .successHandler(oAuth2LoginSuccessHandler))
-        .addFilterBefore(jwtFilter, AnonymousAuthenticationFilter.class) // JwtFilter 등록
+                oauth2 ->
+                        oauth2
+                                .userInfoEndpoint(
+                                        userInfo -> userInfo.userService(customOAuth2UserService))
+                                .successHandler(oAuth2LoginSuccessHandler))
+
+        // JwtFilter를 Spring Security 필터 체인에 등록
+        .addFilterBefore(jwtFilter, AnonymousAuthenticationFilter.class)
         .build();
   }
 
