@@ -20,17 +20,51 @@ public class ReservationCancelManager {
 
   @Transactional
   public void cancel(Long reservationId) {
-    Reservation reservation = reservationRepository.findByIdWithPessimisticLock(reservationId)
+    processTerminalStatusChange(reservationId, TerminalAction.CANCEL);
+  }
+
+  @Transactional
+  public void expire(Long reservationId) {
+    processTerminalStatusChange(reservationId, TerminalAction.EXPIRE);
+  }
+
+  private void processTerminalStatusChange(Long reservationId, TerminalAction action) {
+    Reservation reservation =
+        reservationRepository
+            .findByIdWithPessimisticLock(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    if (reservation.getStatus() == ReservationStatus.CANCELED) {
+    ReservationStatus currentStatus = reservation.getStatus();
+
+    if (currentStatus == ReservationStatus.CANCELED || currentStatus == ReservationStatus.EXPIRED) {
       return;
     }
 
-    Long scheduleId = reservation.getSchedule().getId();
-    Schedule schedule = scheduleRepository.findByIdWithPessimisticLock(scheduleId).orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+    boolean needsCapacityRestore =
+        currentStatus == ReservationStatus.PENDING || currentStatus == ReservationStatus.CONFIRMED;
 
-    reservation.cancel();
-    schedule.cancelReservation(reservation.getPersonCount());
+    Schedule schedule = null;
+    if (needsCapacityRestore) {
+      Long scheduleId = reservation.getSchedule().getId();
+      schedule =
+          scheduleRepository
+              .findByIdWithPessimisticLock(scheduleId)
+              .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+    }
+
+    if (action == TerminalAction.CANCEL) {
+      reservation.cancel();
+    } else {
+      reservation.expired();
+    }
+
+    if (schedule != null) {
+      schedule.cancelReservation(reservation.getPersonCount());
+    }
+  }
+
+  private enum TerminalAction {
+    CANCEL,
+    EXPIRE
   }
 }
