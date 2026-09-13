@@ -18,15 +18,12 @@ public interface ReservationRepositoryCustom {
   List<Reservation> findAdminReservations(
       Long popupId, LocalDate scheduleDate, ReservationStatus status);
 
-  // 체크인 단 건 조회
-  Optional<Reservation> findByReservationNumber(String reservationNumber);
-
   // 만료 예약 찾기
   List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime);
 
-  //이중 체크인 방지
+  // 이중 체크인 방지
   Optional<Reservation> findByReservationNumberWithPessimisticLock(String reservationNumber);
 
-  //취소/만료 이중 처리 방지
+  // 취소/만료 이중 처리 방지
   Optional<Reservation> findByIdWithPessimisticLock(Long id);
 }

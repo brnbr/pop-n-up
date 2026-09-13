@@ -71,19 +71,6 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   }
 
   @Override
-  public Optional<Reservation> findByReservationNumber(String reservationNumber) {
-    Reservation result =
-        queryFactory
-            .selectFrom(reservation)
-            .join(reservation.member, member)
-            .fetchJoin()
-            .where(reservation.reservationNumber.eq(reservationNumber))
-            .fetchOne();
-
-    return Optional.ofNullable(result);
-  }
-
-  @Override
   public List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime) {
     return queryFactory
         .selectFrom(reservation)
@@ -114,7 +101,8 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
 
   @Override
   public Optional<Reservation> findByIdWithPessimisticLock(Long id) {
-    Reservation result = queryFactory
+    Reservation result =
+        queryFactory
             .selectFrom(reservation)
             .where(reservation.id.eq(id))
             .setLockMode(LockModeType.PESSIMISTIC_WRITE)
@@ -124,7 +112,7 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
     return Optional.ofNullable(result);
   }
 
-  //todo dsl 적용 후 삭제
+  // todo dsl 적용 후 삭제
   private BooleanExpression popupIdEq(Long popupId) {
     return popupId != null ? reservation.schedule.popup.id.eq(popupId) : null;
   }
