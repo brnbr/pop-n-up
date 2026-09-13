@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.global.config;
+package com.popnup.popnupbackend.global.security;
 
 import com.popnup.popnupbackend.domain.member.enums.Role;
 import io.jsonwebtoken.Claims;
@@ -16,9 +16,6 @@ public class JwtUtil {
   private final SecretKey secretKey;
 
   public JwtUtil(@Value("${jwt.secret}") String secret) {
-    System.out.println("========== JWT SECRET ==========");
-    System.out.println(secret);
-    System.out.println("================================");
 
     byte[] keyBytes = Decoders.BASE64.decode(secret);
     this.secretKey = Keys.hmacShaKeyFor(keyBytes);
@@ -41,5 +38,12 @@ public class JwtUtil {
 
   public Claims getClaims(String token) {
     return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload();
+  }
+
+  // JwtUtil에서 JWT 남은 시간 계산하기
+  public long getRemainingExpirationMillis(String token) {
+    Date expiration = getClaims(token).getExpiration();
+
+    return expiration.getTime() - System.currentTimeMillis();
   }
 }

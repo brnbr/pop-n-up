@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.global.config;
+package com.popnup.popnupbackend.global.security;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.member.enums.Role;
@@ -25,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class JwtFilter extends OncePerRequestFilter {
 
   private final JwtUtil jwtUtil;
+  private final JwtBlacklistService jwtBlacklistService;
 
   @Override
   protected void doFilterInternal(
@@ -53,6 +54,10 @@ public class JwtFilter extends OncePerRequestFilter {
     String token = authorizationHeader.substring("Bearer ".length());
 
     try {
+      if (jwtBlacklistService.isBlacklisted(token)) {
+        sendUnauthorized(response, AuthErrorCode.BLACKLISTED_TOKEN);
+        return;
+      }
       authenticate(token, request);
     } catch (JwtException e) {
       sendUnauthorized(response, AuthErrorCode.INVALID_TOKEN);

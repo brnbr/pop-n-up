@@ -1,6 +1,7 @@
 package com.popnup.popnupbackend.global.config;
 
 import com.popnup.popnupbackend.domain.member.entity.Member;
+import com.popnup.popnupbackend.global.security.JwtUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

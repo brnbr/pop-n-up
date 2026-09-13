@@ -13,7 +13,8 @@ import com.popnup.popnupbackend.domain.member.dto.request.MemberUpdatePasswordRe
 import com.popnup.popnupbackend.domain.member.dto.response.MemberGetResponse;
 import com.popnup.popnupbackend.domain.member.enums.Role;
 import com.popnup.popnupbackend.domain.member.service.MemberService;
-import com.popnup.popnupbackend.global.config.JwtUtil;
+import com.popnup.popnupbackend.global.security.JwtBlacklistService;
+import com.popnup.popnupbackend.global.security.JwtUtil;
 import java.util.Collections;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +39,8 @@ class MemberControllerTest {
   @MockitoBean private MemberService memberService;
 
   @MockitoBean private JwtUtil jwtUtil;
+
+  @MockitoBean private JwtBlacklistService jwtBlacklistService;
 
   private AuthUser authUser;
 
@@ -90,11 +93,11 @@ class MemberControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
-                                        {
-                                          "oldPassword": "oldPassword",
-                                          "newPassword": "newPassword123"
-                                        }
-                                        """))
+                                    {
+                                      "oldPassword": "oldPassword",
+                                      "newPassword": "newPassword123"
+                                    }
+                                    """))
         .andExpect(status().isOk());
 
     verify(memberService)
@@ -117,10 +120,10 @@ class MemberControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
-                                        {
-                                          "password": "password"
-                                        }
-                                        """))
+                                    {
+                                      "password": "password"
+                                    }
+                                    """))
         .andExpect(status().isOk());
 
     verify(memberService).deleteMe(any(AuthUser.class), any(MemberDeleteRequest.class));
@@ -136,11 +139,11 @@ class MemberControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
-                                        {
-                                          "oldPassword": "",
-                                          "newPassword": "newPassword123"
-                                        }
-                                        """))
+                                    {
+                                      "oldPassword": "",
+                                      "newPassword": "newPassword123"
+                                    }
+                                    """))
         .andExpect(status().isBadRequest());
 
     verify(memberService, never())
@@ -157,11 +160,11 @@ class MemberControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
-                                        {
-                                          "oldPassword": "oldPassword",
-                                          "newPassword": "1234"
-                                        }
-                                        """))
+                                    {
+                                      "oldPassword": "oldPassword",
+                                      "newPassword": "1234"
+                                    }
+                                    """))
         .andExpect(status().isBadRequest());
 
     verify(memberService, never())
@@ -178,10 +181,10 @@ class MemberControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """
-                                        {
-                                          "password": ""
-                                        }
-                                        """))
+                                    {
+                                      "password": ""
+                                    }
+                                    """))
         .andExpect(status().isBadRequest());
 
     verify(memberService, never()).deleteMe(any(AuthUser.class), any(MemberDeleteRequest.class));
