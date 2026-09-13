@@ -33,7 +33,7 @@ public class ReservationTimeoutProcessor {
 
     for (Reservation dr : deadReservations) {
       try {
-        cancelSingleTimeoutReservation(dr.getId());
+        expireSingleTimeoutReservation(dr.getId());
       } catch (Exception e) {
         log.error("[payTimeOut] 예약 단건 만료 처리 실패 (ID: {})", dr.getId(), e);
       }
@@ -42,7 +42,7 @@ public class ReservationTimeoutProcessor {
 
   // 만료 대상 단건 취소 및 좌석 복구
   @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public void cancelSingleTimeoutReservation(Long reservationId) {
+  public void expireSingleTimeoutReservation(Long reservationId) {
     Reservation reservation =
         reservationRepository
             .findById(reservationId)
@@ -52,6 +52,6 @@ public class ReservationTimeoutProcessor {
       return;
     }
 
-    reservationCancelManager.cancel(reservationId);
+    reservationCancelManager.expire(reservationId);
   }
 }
