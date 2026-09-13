@@ -46,7 +46,7 @@ public class ScheduleService {
 
     if (scheduleRepository.existOverlappingSchedule(
         popup.getId(), request.getScheduleDate(), request.getStartTime(), request.getEndTime())) {
-      throw ScheduleErrorCode.SCHEDULE_TIME_OVERLAPPED.toException();
+      throw ScheduleErrorCode.DUPLICATE_TIME_SLOT.toException();
     }
 
     Schedule schedule =
@@ -81,7 +81,7 @@ public class ScheduleService {
 
     if (scheduleRepository.existOverlappingSchedule(
         popup.getId(), request.getScheduleDate(), request.getOpenTime(), request.getCloseTime())) {
-      throw ScheduleErrorCode.SCHEDULE_TIME_OVERLAPPED.toException();
+      throw ScheduleErrorCode.DUPLICATE_TIME_SLOT.toException();
     }
 
     List<Schedule> schedules = new ArrayList<>();
@@ -133,7 +133,7 @@ public class ScheduleService {
   public void deleteSchedule(Long scheduleId) {
     Schedule schedule =
         scheduleRepository
-            .findById(scheduleId)
+            .findByIdWithPessimisticLock(scheduleId)
             .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
 
     if (schedule.getNowCapacity() > 0) {
