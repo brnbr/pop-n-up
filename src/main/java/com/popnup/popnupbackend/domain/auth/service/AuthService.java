@@ -25,7 +25,6 @@ public class AuthService {
   @Transactional
   public void signup(SignupRequest request) {
 
-
     if (memberRepository.existsByEmail(request.getEmail())) {
       throw MemberErrorCode.EMAIL_ALREADY_EXISTS.toException();
     }
