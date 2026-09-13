@@ -9,6 +9,7 @@ import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -32,13 +33,13 @@ class ReservationCancelManagerTest {
         Schedule.createSchedule(
             null, LocalDate.now(), LocalTime.of(10, 0), LocalTime.of(11, 0), 10);
     ReflectionTestUtils.setField(schedule, "id", 1L);
-    schedule.addReservation(4); // nowCapacity = 4
+    schedule.addReservation(4, LocalDateTime.parse("2026-09-11"));
 
     Reservation reservation = Reservation.createReservation("R1", null, schedule, 4);
 
     given(scheduleRepository.findByIdWithPessimisticLock(1L)).willReturn(Optional.of(schedule));
 
-    cancelManager.cancel(reservation);
+    cancelManager.cancel(reservation.getId());
 
     assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CANCELED);
     assertThat(schedule.getNowCapacity()).isEqualTo(0);

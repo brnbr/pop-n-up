@@ -45,7 +45,7 @@ class ReservationTimeoutProcessorTest {
     processor.payTimeOut();
 
     // 102L 취소 매니저는 정상 실행되어야 함
-    verify(cancelManager, times(1)).cancel(r2);
+    verify(cancelManager, times(1)).cancel(1L);
   }
 
   @Test

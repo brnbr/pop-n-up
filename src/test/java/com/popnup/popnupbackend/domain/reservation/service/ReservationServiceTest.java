@@ -277,7 +277,7 @@ class ReservationServiceTest {
 
       reservationService.cancel(1L, 500L);
 
-      verify(reservationCancelManager).cancel(testReservation);
+      verify(reservationCancelManager).cancel(testReservation.getId());
     }
 
     @Test

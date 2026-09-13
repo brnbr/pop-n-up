@@ -19,6 +19,7 @@ import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import com.popnup.popnupbackend.global.error.ServiceException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -298,7 +299,7 @@ class ScheduleServiceTest {
           Schedule.createSchedule(
               popup, LocalDate.of(2026, 10, 5), LocalTime.of(10, 0), LocalTime.of(11, 0), 10);
       ReflectionTestUtils.setField(schedule, "id", 100L);
-      schedule.addReservation(2); // 2명 예약 발생
+      schedule.addReservation(2, LocalDateTime.parse("2026-09-11"));
 
       given(scheduleRepository.findById(100L)).willReturn(Optional.of(schedule));
 
