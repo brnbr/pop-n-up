@@ -24,5 +24,9 @@ public interface ReservationRepositoryCustom {
   // 만료 예약 찾기
   List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime);
 
+  //이중 체크인 방지
   Optional<Reservation> findByReservationNumberWithPessimisticLock(String reservationNumber);
+
+  //취소/만료 이중 처리 방지
+  Optional<Reservation> findByIdWithPessimisticLock(Long id);
 }
