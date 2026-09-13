@@ -99,7 +99,7 @@ public class Schedule extends BaseEntity {
     }
 
     if (this.popup.getStatus() != PopupStatus.OPEN) {
-      throw ScheduleErrorCode.POPUP_NOT_OPEN.toException();
+      throw ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND.toException();
     }
 
     if (this.nowCapacity + count > this.maxCapacity) {
