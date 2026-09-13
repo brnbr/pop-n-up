@@ -130,7 +130,7 @@ class ScheduleBookingConcurrencyTest extends ConcurrencyTestSupport {
     assertThat(completed).isTrue();
     assertThat(successCount.get()).isEqualTo(capacity);
     assertThat(failCount.get()).isEqualTo(requesterCount - capacity);
-    //nowCapacity가 정원(10)을 절대 넘지 않음 - 이게 락이 실제로 막아주는지의 증거
+    // nowCapacity가 정원(10)을 절대 넘지 않음 - 이게 락이 실제로 막아주는지의 증거
     assertThat(finalSchedule.getNowCapacity()).isEqualTo(capacity);
     assertThat(finalSchedule.getNowCapacity()).isLessThanOrEqualTo(finalSchedule.getMaxCapacity());
   }

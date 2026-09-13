@@ -115,7 +115,7 @@ class ReservationCancelConcurrencyTest extends ConcurrencyTestSupport {
 
     assertThat(completed).isTrue();
     assertThat(finalReservation.getStatus()).isEqualTo(ReservationStatus.CANCELED);
-    //0번 요청이 몰려도 좌석은 정확히 1번만 복구되어야 함 (2 -> 0, 음수나 중복 복구 없이)
+    // 0번 요청이 몰려도 좌석은 정확히 1번만 복구되어야 함 (2 -> 0, 음수나 중복 복구 없이)
     assertThat(finalSchedule.getNowCapacity()).isZero();
   }
 }
