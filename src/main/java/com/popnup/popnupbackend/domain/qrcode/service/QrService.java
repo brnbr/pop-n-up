@@ -7,7 +7,7 @@ import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
-import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
+import com.popnup.popnupbackend.domain.qrcode.exception.QrErrorCode;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -38,9 +38,9 @@ public class QrService {
       MatrixToImageWriter.writeToStream(bitMatrix, IMAGE_FORMAT, outputStream);
 
       return outputStream.toByteArray();
-    } catch (WriterException | IOException exception) {
+    } catch (WriterException | IOException | IllegalArgumentException exception) {
       log.error("QR Code 생성 실패: text={}", content, exception);
-      throw ReservationErrorCode.QR_GENERATION_FAILED.toException();
+      throw QrErrorCode.QR_GENERATION_FAILED.toException();
     }
   }
 }
