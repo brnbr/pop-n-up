@@ -77,16 +77,15 @@ public class ReservationService {
         savedReservation.getId(), savedReservation.getReservationNumber());
   }
 
-  // todo 결제 성공 시 예약 확정 처리
-  // note QR 코드 생성 및 저장은 추가됨
   // 결제 시 예약 확정
   @Transactional
-  public void confirmReservation(Long reservationId) {
+  public void confirmReservation(Long reservationId, boolean paymentSucceeded) {
     Reservation reservation =
         reservationRepository
-            .findById(reservationId)
+            .findByIdWithPessimisticLock(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
-    reservation.confirm();
+
+    reservation.confirm(paymentSucceeded);
   }
 
   // QR 생성
@@ -176,7 +175,11 @@ public class ReservationService {
     log.info("[expiredPastReservation] 만료 처리 대상 건수: {}건", expiredList.size());
 
     for (Reservation reservation : expiredList) {
-      reservation.expired();
+      try {
+        reservationCancelManager.expire(reservation.getId());
+      } catch (Exception e) {
+        log.error("[expiredPastReservation] 예약 단건 만료 처리 실패 (ID: {})", reservation.getId(), e);
+      }
     }
   }
 }
