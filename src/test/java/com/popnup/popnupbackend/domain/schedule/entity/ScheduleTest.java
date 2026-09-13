@@ -305,10 +305,10 @@ class ScheduleTest {
 
       log.info(
           "[addReservation.popupUpcoming] expectedErrorCode={} actualErrorCode={}",
-          ScheduleErrorCode.POPUP_NOT_OPEN,
+          ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND,
           exception.getErrorCode());
 
-      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.POPUP_NOT_OPEN);
+      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND);
     }
 
     @Test
@@ -335,11 +335,11 @@ class ScheduleTest {
 
       log.info(
           "[addReservation.popupClosed] expectedErrorCode={} actualErrorCode={} expectedCapacity=0 actualCapacity={}",
-          ScheduleErrorCode.POPUP_NOT_OPEN,
+          ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND,
           exception.getErrorCode(),
           actualCapacity);
 
-      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.POPUP_NOT_OPEN);
+      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND);
       assertThat(actualCapacity).isZero();
     }
   }

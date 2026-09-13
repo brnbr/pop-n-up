@@ -221,10 +221,10 @@ class ReservationServiceTest {
 
       log.info(
           "[book.popupNotOpen] expectedErrorCode={} actualErrorCode={}",
-          ScheduleErrorCode.POPUP_NOT_OPEN,
+          ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND,
           exception.getErrorCode());
 
-      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.POPUP_NOT_OPEN);
+      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND);
     }
   }
 
