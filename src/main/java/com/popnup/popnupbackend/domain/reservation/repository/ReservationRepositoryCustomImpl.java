@@ -10,12 +10,11 @@ import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
-
-import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
@@ -100,14 +99,32 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   }
 
   @Override
-  public Optional<Reservation> findByReservationNumberWithPessimisticLock(String reservationNumber) {
-    Reservation result = queryFactory.selectFrom(reservation).where(reservation.reservationNumber.eq(reservationNumber))
-            .setLockMode(LockModeType.PESSIMISTIC_WRITE).fetchOne();
+  public Optional<Reservation> findByReservationNumberWithPessimisticLock(
+      String reservationNumber) {
+    Reservation result =
+        queryFactory
+            .selectFrom(reservation)
+            .where(reservation.reservationNumber.eq(reservationNumber))
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .setHint("jakarta.persistence.lock.timeout", 3000)
+            .fetchOne();
 
     return Optional.ofNullable(result);
   }
 
-  // dsl 적용 후 삭제
+  @Override
+  public Optional<Reservation> findByIdWithPessimisticLock(Long id) {
+    Reservation result = queryFactory
+            .selectFrom(reservation)
+            .where(reservation.id.eq(id))
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .setHint("jakarta.persistence.lock.timeout", 3000)
+            .fetchOne();
+
+    return Optional.ofNullable(result);
+  }
+
+  //todo dsl 적용 후 삭제
   private BooleanExpression popupIdEq(Long popupId) {
     return popupId != null ? reservation.schedule.popup.id.eq(popupId) : null;
   }
