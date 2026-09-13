@@ -27,7 +27,7 @@ public class ScheduleResponse {
     int remaining = schedule.getRemainingCapacity();
     boolean started = schedule.isAlreadyStarted(now);
 
-    boolean available = schedule.isActive() && remaining > 0 && !started;
+    boolean available = schedule.isActive() && !schedule.isSoldOut() && !started;
 
     return new ScheduleResponse(
         schedule.getId(),
