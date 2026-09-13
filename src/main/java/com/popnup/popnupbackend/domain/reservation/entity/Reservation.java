@@ -107,8 +107,9 @@ public class Reservation extends BaseEntity {
 
   // 노쇼 자동 만료
   public void expired() {
-    if (this.status == ReservationStatus.CONFIRMED) {
-      this.status = ReservationStatus.EXPIRED;
+    if (this.status != ReservationStatus.PENDING && this.status != ReservationStatus.CONFIRMED) {
+      return;
     }
+    this.status = ReservationStatus.EXPIRED;
   }
 }
