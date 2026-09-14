@@ -47,30 +47,25 @@ class ReservationTimeoutProcessorTest {
     ReflectionTestUtils.setField(member, "id", 1L);
 
     Popup popup =
-            Popup.builder()
-                    .title("테스트 팝업")
-                    .category(PopupCategory.ETC)
-                    .region("서울")
-                    .address("서울시 강남구")
-                    .startDate(LocalDate.now().minusDays(10))
-                    .endDate(LocalDate.now().plusDays(10))
-                    .isFree(true)
-                    .price(0)
-                    .status(PopupStatus.OPEN)
-                    .build();
+        Popup.builder()
+            .title("테스트 팝업")
+            .category(PopupCategory.ETC)
+            .region("서울")
+            .address("서울시 강남구")
+            .startDate(LocalDate.now().minusDays(10))
+            .endDate(LocalDate.now().plusDays(10))
+            .isFree(true)
+            .price(0)
+            .status(PopupStatus.OPEN)
+            .build();
 
     schedule =
-            Schedule.createSchedule(
-                    popup,
-                    LocalDate.now().plusDays(1),
-                    LocalTime.of(10, 0),
-                    LocalTime.of(11, 0),
-                    10);
+        Schedule.createSchedule(
+            popup, LocalDate.now().plusDays(1), LocalTime.of(10, 0), LocalTime.of(11, 0), 10);
 
     ReflectionTestUtils.setField(schedule, "id", 100L);
 
-    pendingReservation =
-            Reservation.createReservation("R1", member, schedule, 2);
+    pendingReservation = Reservation.createReservation("R1", member, schedule, 2);
 
     ReflectionTestUtils.setField(pendingReservation, "id", 10L);
   }
@@ -82,74 +77,50 @@ class ReservationTimeoutProcessorTest {
     @Test
     @DisplayName("타임아웃 대상이 없으면 만료 처리를 호출하지 않는다")
     void empty() {
-      given(
-              reservationRepository.findByStatusAndCreatedAtBefore(
-                      any(), any()))
-              .willReturn(List.of());
+      given(reservationRepository.findByStatusAndCreatedAtBefore(any(), any()))
+          .willReturn(List.of());
 
       log.info("[payTimeOut.empty] input(targetCount=0)");
 
       reservationTimeoutProcessor.payTimeOut();
 
-      verify(
-              reservationCancelManager,
-              never())
-              .expirePaymentTimeout(any());
+      verify(reservationCancelManager, never()).expirePaymentTimeout(any());
     }
 
     @Test
     @DisplayName("타임아웃 대상이 있으면 각 예약의 결제 타임아웃 만료를 시도한다")
     void withTargets() {
-      given(
-              reservationRepository.findByStatusAndCreatedAtBefore(
-                      any(), any()))
-              .willReturn(List.of(pendingReservation));
+      given(reservationRepository.findByStatusAndCreatedAtBefore(any(), any()))
+          .willReturn(List.of(pendingReservation));
 
-      log.info(
-              "[payTimeOut.withTargets] input(targetCount=1, targetId=10)");
+      log.info("[payTimeOut.withTargets] input(targetCount=1, targetId=10)");
 
       reservationTimeoutProcessor.payTimeOut();
 
-      verify(
-              reservationCancelManager,
-              times(1))
-              .expirePaymentTimeout(10L);
+      verify(reservationCancelManager, times(1)).expirePaymentTimeout(10L);
     }
 
     @Test
     @DisplayName("단건 처리 중 예외가 발생해도 나머지 예약 처리를 계속한다")
     void continuesOnSingleFailure() {
-      Reservation another =
-              Reservation.createReservation(
-                      "R2", member, schedule, 1);
+      Reservation another = Reservation.createReservation("R2", member, schedule, 1);
 
       ReflectionTestUtils.setField(another, "id", 11L);
 
-      given(
-              reservationRepository.findByStatusAndCreatedAtBefore(
-                      any(), any()))
-              .willReturn(
-                      List.of(pendingReservation, another));
+      given(reservationRepository.findByStatusAndCreatedAtBefore(any(), any()))
+          .willReturn(List.of(pendingReservation, another));
 
       doThrow(new RuntimeException("DB 오류"))
-              .when(reservationCancelManager)
-              .expirePaymentTimeout(10L);
+          .when(reservationCancelManager)
+          .expirePaymentTimeout(10L);
 
-      log.info(
-              "[payTimeOut.continuesOnSingleFailure] "
-                      + "input(targetIds=[10(실패유도), 11])");
+      log.info("[payTimeOut.continuesOnSingleFailure] " + "input(targetIds=[10(실패유도), 11])");
 
       reservationTimeoutProcessor.payTimeOut();
 
-      verify(
-              reservationCancelManager,
-              times(1))
-              .expirePaymentTimeout(10L);
+      verify(reservationCancelManager, times(1)).expirePaymentTimeout(10L);
 
-      verify(
-              reservationCancelManager,
-              times(1))
-              .expirePaymentTimeout(11L);
+      verify(reservationCancelManager, times(1)).expirePaymentTimeout(11L);
     }
   }
 
@@ -160,17 +131,11 @@ class ReservationTimeoutProcessorTest {
     @Test
     @DisplayName("결제 타임아웃 처리를 CancelManager에 위임한다")
     void delegatesToCancelManager() {
-      log.info(
-              "[expireSingleTimeoutReservation] "
-                      + "input(reservationId=10)");
+      log.info("[expireSingleTimeoutReservation] " + "input(reservationId=10)");
 
-      reservationTimeoutProcessor
-              .expireSingleTimeoutReservation(10L);
+      reservationTimeoutProcessor.expireSingleTimeoutReservation(10L);
 
-      verify(
-              reservationCancelManager,
-              times(1))
-              .expirePaymentTimeout(10L);
+      verify(reservationCancelManager, times(1)).expirePaymentTimeout(10L);
     }
   }
 }

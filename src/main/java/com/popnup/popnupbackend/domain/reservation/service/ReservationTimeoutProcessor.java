@@ -2,7 +2,6 @@ package com.popnup.popnupbackend.domain.reservation.service;
 
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
-import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
 import java.time.LocalDateTime;
 import java.util.List;

@@ -123,7 +123,7 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
           try {
             startLatch.await();
 
-            reservationCancelManager.expire(reservationId);
+            reservationCancelManager.expirePaymentTimeout(reservationId);
 
             expireSuccessCount.incrementAndGet();
 
