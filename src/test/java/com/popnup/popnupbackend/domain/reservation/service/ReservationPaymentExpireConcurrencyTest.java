@@ -78,7 +78,7 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
     Long scheduleId = schedule.getId();
 
     log.info(
-        "[concurrentConfirmAndExpire] setup reservationId={}, " + "status={}, nowCapacity={}",
+        "[concurrentConfirmAndExpire] setup reservationId={}, status={}, nowCapacity={}",
         reservationId,
         reservation.getStatus(),
         schedule.getNowCapacity());
@@ -90,7 +90,7 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
     CountDownLatch doneLatch = new CountDownLatch(2);
 
     AtomicInteger confirmSuccessCount = new AtomicInteger();
-    AtomicInteger expireSuccessCount = new AtomicInteger();
+    AtomicInteger expireCompletedCount = new AtomicInteger();
 
     // 결제 승인 스레드
     executor.submit(
@@ -107,7 +107,6 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
             log.info("[confirm] success");
 
           } catch (Exception e) {
-
             log.info("[confirm] failed: {}", e.getMessage());
 
           } finally {
@@ -115,7 +114,7 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
           }
         });
 
-    // 만료 스레드
+    // 결제 타임아웃 스레드
     executor.submit(
         () -> {
           readyLatch.countDown();
@@ -125,13 +124,12 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
 
             reservationCancelManager.expirePaymentTimeout(reservationId);
 
-            expireSuccessCount.incrementAndGet();
+            expireCompletedCount.incrementAndGet();
 
-            log.info("[expire] success");
+            log.info("[expirePaymentTimeout] completed");
 
           } catch (Exception e) {
-
-            log.info("[expire] failed: {}", e.getMessage());
+            log.info("[expirePaymentTimeout] failed: {}", e.getMessage());
 
           } finally {
             doneLatch.countDown();
@@ -140,7 +138,7 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
 
     readyLatch.await();
 
-    // 동시에 시작
+    // 두 스레드 동시에 시작
     startLatch.countDown();
 
     boolean completed = doneLatch.await(30, TimeUnit.SECONDS);
@@ -153,25 +151,44 @@ class ReservationPaymentExpireConcurrencyTest extends ConcurrencyTestSupport {
     Schedule finalSchedule = scheduleRepository.findById(scheduleId).orElseThrow();
 
     log.info(
-        "[result] completed={}, "
-            + "confirmSuccess={}, "
-            + "expireSuccess={}, "
-            + "finalStatus={}, "
-            + "finalCapacity={}",
+        "[result] completed={}, confirmSuccess={}, expireCompleted={}, finalStatus={}, finalCapacity={}",
         completed,
         confirmSuccessCount.get(),
-        expireSuccessCount.get(),
+        expireCompletedCount.get(),
         finalReservation.getStatus(),
         finalSchedule.getNowCapacity());
 
     assertThat(completed).isTrue();
 
-    // 현재 구현에서는 expire가 최종적으로 수행되므로
-    // 최종 상태는 EXPIRED가 될 가능성이 높음
-    assertThat(finalReservation.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+    /*
+     * 두 결과 모두 가능하다.
+     *
+     * 1. 결제 승인 스레드가 먼저 락 획득
+     *    PENDING -> CONFIRMED
+     *    타임아웃은 CONFIRMED를 확인하고 아무 처리하지 않음
+     *
+     * 2. 타임아웃 스레드가 먼저 락 획득
+     *    PENDING -> EXPIRED
+     *    좌석 복구
+     *    이후 결제 승인은 상태 검증에서 실패
+     */
 
-    // 예약 당시 2명이 증가했으므로
-    // 만료 처리 후에는 정확히 한 번만 복구되어야 함
-    assertThat(finalSchedule.getNowCapacity()).isZero();
+    if (finalReservation.getStatus() == ReservationStatus.CONFIRMED) {
+
+      assertThat(confirmSuccessCount.get()).isEqualTo(1);
+
+      // 결제가 확정됐으므로 예약 좌석 2명 유지
+      assertThat(finalSchedule.getNowCapacity()).isEqualTo(2);
+
+    } else {
+
+      assertThat(finalReservation.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+
+      // 타임아웃으로 예약이 만료됐으므로 좌석 복구
+      assertThat(finalSchedule.getNowCapacity()).isZero();
+
+      // 만료가 먼저 처리됐다면 결제 승인은 성공할 수 없음
+      assertThat(confirmSuccessCount.get()).isZero();
+    }
   }
 }
