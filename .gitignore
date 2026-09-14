@@ -38,4 +38,4 @@ out/
 
 
 .env
-api-test.httpapi-test.http
+api-test.http
