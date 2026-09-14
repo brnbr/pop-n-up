@@ -26,5 +26,9 @@ spring:
     hibernate:
       ddl-auto: create-drop
 
+kakaopay:
+  secretKey: test-kakaopay-secret-key
+  cid: TC0ONETIME
+
 jwt:
   secret: as6rrc0S88l74sg6xAaJkG+QbcFUdqm+cI7B9E8hWI8=

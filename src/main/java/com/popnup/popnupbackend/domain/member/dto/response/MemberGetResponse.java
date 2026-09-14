@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.domain.member.dto.reponse;
+package com.popnup.popnupbackend.domain.member.dto.response;
 
 import com.popnup.popnupbackend.domain.member.enums.Role;
 import lombok.Getter;

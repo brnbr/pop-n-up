@@ -3,10 +3,10 @@ package com.popnup.popnupbackend.domain.auth.service;
 import com.popnup.popnupbackend.domain.auth.dto.request.SigninRequest;
 import com.popnup.popnupbackend.domain.auth.dto.request.SignupRequest;
 import com.popnup.popnupbackend.domain.member.entity.Member;
-import com.popnup.popnupbackend.domain.member.exception.EmailNotFoundException;
-import com.popnup.popnupbackend.domain.member.exception.PasswordNotMatchException;
+import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
-import com.popnup.popnupbackend.global.config.JwtUtil;
+import com.popnup.popnupbackend.global.security.JwtBlacklistService;
+import com.popnup.popnupbackend.global.security.JwtUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,9 +20,15 @@ public class AuthService {
   private final MemberRepository memberRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtUtil jwtUtil;
+  private final JwtBlacklistService jwtBlacklistService;
 
   @Transactional
   public void signup(SignupRequest request) {
+
+    if (memberRepository.existsByEmail(request.getEmail())) {
+      throw MemberErrorCode.EMAIL_ALREADY_EXISTS.toException();
+    }
+
     String password = request.getPassword();
     String encodedPassword = passwordEncoder.encode(password);
 
@@ -34,7 +40,7 @@ public class AuthService {
     Member member =
         memberRepository
             .findByEmail(request.getEmail())
-            .orElseThrow(() -> new EmailNotFoundException());
+            .orElseThrow(MemberErrorCode.EMAIL_NOT_FOUND::toException);
 
     member.validateActive();
 
@@ -44,10 +50,16 @@ public class AuthService {
     boolean matches = passwordEncoder.matches(rawPassword, encodedPassword);
 
     if (!matches) {
-      throw new PasswordNotMatchException();
+      throw MemberErrorCode.PASSWORD_NOT_MATCH.toException();
     }
 
     return jwtUtil.createToken(
         member.getId(), member.getEmail(), member.getName(), member.getRole());
+  }
+
+  public void logout(String token) {
+    long remainingMills = jwtUtil.getRemainingExpirationMillis(token);
+
+    jwtBlacklistService.blacklist(token, remainingMills);
   }
 }

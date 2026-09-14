@@ -4,8 +4,7 @@ import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.member.enums.MemberStatus;
 import com.popnup.popnupbackend.domain.member.enums.Provider;
 import com.popnup.popnupbackend.domain.member.enums.Role;
-import com.popnup.popnupbackend.domain.member.exception.MemberNotProviderLocalException;
-import com.popnup.popnupbackend.domain.member.exception.MemberNotValidateActiveException;
+import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -41,7 +40,7 @@ public class Member extends BaseEntity {
   private Provider provider;
 
   @Column(nullable = true)
-  private String privateId;
+  private String providerId;
 
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
@@ -71,16 +70,29 @@ public class Member extends BaseEntity {
     return member;
   }
 
+  public static Member createOAuth2(String email, String name, String providerId) {
+    Member member = new Member();
+    member.email = email;
+    member.password = null;
+    member.name = name;
+    member.provider = Provider.KAKAO;
+    member.providerId = providerId;
+    member.role = Role.ROLE_USER;
+    member.status = MemberStatus.ACTIVE;
+
+    return member;
+  }
+
   // 활성화된 회원인지 확인하는 메서드
   public void validateActive() {
     if (this.status != MemberStatus.ACTIVE) {
-      throw new MemberNotValidateActiveException();
+      throw MemberErrorCode.MEMBER_NOT_VALIDATE_ACTIVE.toException();
     }
   }
 
   public void validateLocalProvider() {
     if (this.provider != Provider.LOCAL) {
-      throw new MemberNotProviderLocalException();
+      throw MemberErrorCode.MEMBER_NOT_PROVIDER_LOCAL.toException();
     }
   }
 
@@ -99,5 +111,11 @@ public class Member extends BaseEntity {
 
   public void delete() {
     this.status = MemberStatus.DELETED;
+  }
+
+  public void updateOAuth2(String providerId) {
+    this.provider = Provider.KAKAO;
+    this.providerId = providerId;
+    this.password = null;
   }
 }

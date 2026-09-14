@@ -2,10 +2,48 @@ spring:
   application:
     name: popnup
 
+
   profiles:
     active: local
 
+  config:
+    import:
+      - optional:file:.env[.properties]
   jpa:
     open-in-view: false
-  jwt:
-    secret: ${JWT_SECRET}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            scope:
+              - profile_nickname
+              - account_email
+            client-name: Kakao
+            redirect-uri: "{baseUrl}/login/oauth2/code/kakao"
+            client-authentication-method: client_secret_post
+
+        provider:
+          kakao:
+            authorization_uri: https://kauth.kakao.com/oauth/authorize
+            token_uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user_name_attribute: id
+
+
+kakaopay:
+  secretKey: ${KAKAOPAY_SECRET_KEY}
+  cid: TC0ONETIME
+
+jwt:
+  secret: ${JWT_SECRET}
+
+  # 네이버 지도 API 공동 설정 추가
+naver:
+  maps:
+    client-id: ${NAVER_MAPS_CLIENT_ID:dummy-naver-id}
+    client-secret: ${NAVER_MAPS_CLIENT_SECRET:dummy-naver-secret}

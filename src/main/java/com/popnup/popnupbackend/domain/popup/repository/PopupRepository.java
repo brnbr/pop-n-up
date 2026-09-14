@@ -15,4 +15,8 @@ public interface PopupRepository extends JpaRepository<Popup, Long> {
   List<Popup> findByStatus(PopupStatus status);
 
   List<Popup> findByTitleContaining(String keyword);
+
+  // 위도 min~max, 경도 min~max 사이의 데이터 자동 검색
+  List<Popup> findByLatitudeBetweenAndLongitudeBetween(
+      Double minLat, Double maxLat, Double minLng, Double maxLng);
 }
