@@ -19,6 +19,7 @@ import com.popnup.popnupbackend.domain.reservation.repository.ReservationReposit
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -194,5 +195,49 @@ class KakaoPayProviderTest {
         .postForEntity(any(String.class), any(HttpEntity.class), eq(KakaoPayReadyResponse.class));
 
     SecurityContextHolder.clearContext();
+  }
+
+  @Test
+  @DisplayName("카카오 결제 승인 성공 후 예약 확정에 실패하면 예외가 발생한다")
+  void approveFailsWhenReservationConfirmFails() {
+
+    // given
+    when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+    when(reservation.getReservationNumber()).thenReturn("R20260914TEST");
+
+    when(reservation.getMember()).thenReturn(member);
+
+    when(reservation.getId()).thenReturn(1L);
+
+    when(member.getId()).thenReturn(1L);
+
+    KakaoPayApproveResponse kakaoResponse = new KakaoPayApproveResponse();
+
+    when(restTemplate.postForEntity(
+            eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
+            any(HttpEntity.class),
+            eq(KakaoPayApproveResponse.class)))
+        .thenReturn(ResponseEntity.ok(kakaoResponse));
+
+    doThrow(new RuntimeException("예약 확정 실패")).when(reservationService).confirmReservation(1L, true);
+
+    // when & then
+    assertThatThrownBy(() -> kakaoPayProvider.approve(1L, "pg-token"))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessage("예약 확정 실패");
+
+    // 외부 카카오 승인 호출은 이미 성공한 상태
+    verify(restTemplate, times(1))
+        .postForEntity(
+            eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
+            any(HttpEntity.class),
+            eq(KakaoPayApproveResponse.class));
+
+    // payment.approve()까지 실행되었기 때문에
+    // 단위 테스트 객체 상태에서는 PAID
+    assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
+
+    verify(reservationService, times(1)).confirmReservation(1L, true);
   }
 }

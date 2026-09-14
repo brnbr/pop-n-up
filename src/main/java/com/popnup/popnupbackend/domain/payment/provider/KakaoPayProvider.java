@@ -2,9 +2,11 @@ package com.popnup.popnupbackend.domain.payment.provider;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayApproveRequest;
+import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayCancelRequest;
 import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayOrderRequest;
 import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayReadyRequest;
 import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayApproveResponse;
+import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayCancelResponse;
 import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayReadyResponse;
 import com.popnup.popnupbackend.domain.payment.entity.Payment;
 import com.popnup.popnupbackend.domain.payment.enums.PaymentStatus;
@@ -141,7 +143,6 @@ public class KakaoPayProvider {
             .findById(paymentId)
             .orElseThrow(PayErrorCode.PAYMENT_NOT_FOUND::toException);
 
-    // 이미 결제된 경우 중복 승인 방지
     if (payment.getStatus() == PaymentStatus.PAID) {
       throw PayErrorCode.ALREADY_PAID.toException();
     }
@@ -167,10 +168,20 @@ public class KakaoPayProvider {
 
     KakaoPayApproveResponse body = Objects.requireNonNull(response.getBody());
 
+    // 여기까지 오면 카카오에서는 이미 결제 승인 완료
     payment.approve();
 
-    boolean paymentSucceeded = payment.getStatus() == PaymentStatus.PAID;
-    reservationService.confirmReservation(reservation.getId(), paymentSucceeded);
+    try {
+
+      reservationService.confirmReservation(reservation.getId(), true);
+
+    } catch (Exception e) {
+
+      // 여기서 카카오 결제 취소 보상 처리
+      compensatePayment(payment, reservation);
+
+      throw e;
+    }
 
     return body;
   }
@@ -181,5 +192,37 @@ public class KakaoPayProvider {
     headers.add("Authorization", "SECRET_KEY " + secretKey);
     headers.add("Content-type", "application/json");
     return headers;
+  }
+
+  private void compensatePayment(Payment payment, Reservation reservation) {
+
+    try {
+
+      cancelKakaoPayment(payment, reservation);
+
+      payment.cancel();
+
+    } catch (Exception cancelException) {
+
+      payment.requireReconciliation();
+    }
+  }
+
+  private void cancelKakaoPayment(Payment payment, Reservation reservation) {
+
+    KakaoPayCancelRequest request =
+        KakaoPayCancelRequest.builder()
+            .cid(cid)
+            .tid(payment.getTid())
+            .cancelAmount(payment.getAmount())
+            .cancelTaxFreeAmount(0)
+            .build();
+
+    HttpEntity<KakaoPayCancelRequest> entity = new HttpEntity<>(request, getHeaders());
+
+    restTemplate.postForEntity(
+        "https://open-api.kakaopay.com/online/v1/payment/cancel",
+        entity,
+        KakaoPayCancelResponse.class);
   }
 }

@@ -60,4 +60,16 @@ public class Payment {
 
     this.status = PaymentStatus.FAILED;
   }
+
+  public void cancel() {
+    if (this.status != PaymentStatus.PAID) {
+      throw new IllegalStateException("결제 취소 가능한 상태가 아닙니다.");
+    }
+
+    this.status = PaymentStatus.CANCELED;
+  }
+
+  public void requireReconciliation() {
+    this.status = PaymentStatus.RECONCILIATION_REQUIRED;
+  }
 }
