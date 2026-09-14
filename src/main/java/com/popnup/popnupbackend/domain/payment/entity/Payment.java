@@ -44,11 +44,20 @@ public class Payment {
     this.tid = tid;
   }
 
+  // 결제 상태를 하나의 상태 머신처럼 보기
   public void approve() {
+    if (this.status != PaymentStatus.READY) {
+      throw new IllegalStateException("결제 승인 가능한 상태가 아닙니다.");
+    }
+
     this.status = PaymentStatus.PAID;
   }
 
   public void fail() {
+    if (this.status != PaymentStatus.READY) {
+      throw new IllegalStateException("결제 실패 처리 가능한 상태가 아닙니다.");
+    }
+
     this.status = PaymentStatus.FAILED;
   }
 }

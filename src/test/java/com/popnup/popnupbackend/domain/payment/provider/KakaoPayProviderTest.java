@@ -1,6 +1,7 @@
 package com.popnup.popnupbackend.domain.payment.provider;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -8,8 +9,10 @@ import static org.mockito.Mockito.*;
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayOrderRequest;
+import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayApproveResponse;
 import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayReadyResponse;
 import com.popnup.popnupbackend.domain.payment.entity.Payment;
+import com.popnup.popnupbackend.domain.payment.enums.PaymentStatus;
 import com.popnup.popnupbackend.domain.payment.repository.PaymentRepository;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
@@ -22,6 +25,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -52,120 +56,91 @@ class KakaoPayProviderTest {
     payment = new Payment(reservation, "R20260914TEST", 10000);
   }
 
-  /*
-    @Test
-    void 결제_승인_성공시_결제상태가_PAID가_되고_예약이_확정된다() {
+  @Test
+  void 결제_승인_성공시_결제상태가_PAID가_되고_예약이_확정된다() {
 
-      when(paymentRepository.findById(1L))
-              .thenReturn(Optional.of(payment));
+    when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
 
-      when(reservation.getReservationNumber())
-              .thenReturn("R20260914TEST");
+    when(reservation.getReservationNumber()).thenReturn("R20260914TEST");
 
-      when(reservation.getMember())
-              .thenReturn(member);
+    when(reservation.getMember()).thenReturn(member);
 
-      when(reservation.getId())
-              .thenReturn(1L);
+    when(reservation.getId()).thenReturn(1L);
 
-      when(member.getId())
-              .thenReturn(1L);
+    when(member.getId()).thenReturn(1L);
 
-      KakaoPayApproveResponse response =
-              new KakaoPayApproveResponse();
+    KakaoPayApproveResponse response = new KakaoPayApproveResponse();
 
-      when(restTemplate.postForEntity(
-              eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
-              any(HttpEntity.class),
-              eq(KakaoPayApproveResponse.class)))
-              .thenReturn(ResponseEntity.ok(response));
+    when(restTemplate.postForEntity(
+            eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
+            any(HttpEntity.class),
+            eq(KakaoPayApproveResponse.class)))
+        .thenReturn(ResponseEntity.ok(response));
 
-      KakaoPayApproveResponse result =
-              kakaoPayProvider.approve(1L, "pg-token");
+    KakaoPayApproveResponse result = kakaoPayProvider.approve(1L, "pg-token");
 
-      assertThat(result).isSameAs(response);
+    assertThat(result).isSameAs(response);
 
-      assertThat(payment.getStatus())
-              .isEqualTo(PaymentStatus.PAID);
+    assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
 
-      verify(reservationService)
-              .confirmReservation(1L, true);
-    }
+    verify(reservationService).confirmReservation(1L, true);
+  }
 
-    @Test
-    void 이미_결제된_경우_중복_승인할_수_없다() {
+  @Test
+  void 이미_결제된_경우_중복_승인할_수_없다() {
 
-      when(paymentRepository.findById(1L))
-              .thenReturn(Optional.of(payment));
+    when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
 
-      payment.approve();
+    payment.approve();
 
-      assertThatThrownBy(
-              () -> kakaoPayProvider.approve(1L, "pg-token"))
-              .isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> kakaoPayProvider.approve(1L, "pg-token"))
+        .isInstanceOf(RuntimeException.class);
 
-      verify(restTemplate, never())
-              .postForEntity(
-                      any(String.class),
-                      any(HttpEntity.class),
-                      eq(KakaoPayApproveResponse.class));
+    verify(restTemplate, never())
+        .postForEntity(any(String.class), any(HttpEntity.class), eq(KakaoPayApproveResponse.class));
 
-      verify(reservationService, never())
-              .confirmReservation(anyLong(), anyBoolean());
-    }
+    verify(reservationService, never()).confirmReservation(anyLong(), anyBoolean());
+  }
 
-    @Test
-    void 존재하지_않는_payment면_예외가_발생한다() {
+  @Test
+  void 존재하지_않는_payment면_예외가_발생한다() {
 
-      when(paymentRepository.findById(999L))
-              .thenReturn(Optional.empty());
+    when(paymentRepository.findById(999L)).thenReturn(Optional.empty());
 
-      assertThatThrownBy(
-              () -> kakaoPayProvider.approve(999L, "pg-token"))
-              .isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> kakaoPayProvider.approve(999L, "pg-token"))
+        .isInstanceOf(RuntimeException.class);
 
-      verify(restTemplate, never())
-              .postForEntity(
-                      any(String.class),
-                      any(HttpEntity.class),
-                      eq(KakaoPayApproveResponse.class));
+    verify(restTemplate, never())
+        .postForEntity(any(String.class), any(HttpEntity.class), eq(KakaoPayApproveResponse.class));
 
-      verify(reservationService, never())
-              .confirmReservation(anyLong(), anyBoolean());
-    }
+    verify(reservationService, never()).confirmReservation(anyLong(), anyBoolean());
+  }
 
-    @Test
-    void 카카오페이_승인_API_실패시_결제는_PAID가_되지_않는다() {
+  @Test
+  void 카카오페이_승인_API_실패시_결제는_PAID가_되지_않는다() {
 
-      when(paymentRepository.findById(1L))
-              .thenReturn(Optional.of(payment));
+    when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
 
-      when(reservation.getReservationNumber())
-              .thenReturn("R20260914TEST");
+    when(reservation.getReservationNumber()).thenReturn("R20260914TEST");
 
-      when(reservation.getMember())
-              .thenReturn(member);
+    when(reservation.getMember()).thenReturn(member);
 
-      when(member.getId())
-              .thenReturn(1L);
+    when(member.getId()).thenReturn(1L);
 
-      when(restTemplate.postForEntity(
-              eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
-              any(HttpEntity.class),
-              eq(KakaoPayApproveResponse.class)))
-              .thenThrow(new RuntimeException("카카오페이 API 오류"));
+    when(restTemplate.postForEntity(
+            eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
+            any(HttpEntity.class),
+            eq(KakaoPayApproveResponse.class)))
+        .thenThrow(new RuntimeException("카카오페이 API 오류"));
 
-      assertThatThrownBy(
-              () -> kakaoPayProvider.approve(1L, "pg-token"))
-              .isInstanceOf(RuntimeException.class);
+    assertThatThrownBy(() -> kakaoPayProvider.approve(1L, "pg-token"))
+        .isInstanceOf(RuntimeException.class);
 
-      assertThat(payment.getStatus())
-              .isEqualTo(PaymentStatus.READY);
+    assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
 
-      verify(reservationService, never())
-              .confirmReservation(anyLong(), anyBoolean());
-    }
-  */
+    verify(reservationService, never()).confirmReservation(anyLong(), anyBoolean());
+  }
+
   @Test
   void 이미_결제된_예약은_결제_준비를_할_수_없다() throws Exception {
     // given
