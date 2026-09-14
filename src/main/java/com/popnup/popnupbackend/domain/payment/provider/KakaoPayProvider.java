@@ -12,6 +12,7 @@ import com.popnup.popnupbackend.domain.payment.entity.Payment;
 import com.popnup.popnupbackend.domain.payment.enums.PaymentStatus;
 import com.popnup.popnupbackend.domain.payment.exception.PayErrorCode;
 import com.popnup.popnupbackend.domain.payment.repository.PaymentRepository;
+import com.popnup.popnupbackend.domain.payment.service.PaymentCompensationService;
 import com.popnup.popnupbackend.domain.popup.entity.Popup;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
@@ -42,6 +43,7 @@ public class KakaoPayProvider {
   private final ReservationRepository reservationRepository;
   private final PaymentRepository paymentRepository;
   private final ReservationService reservationService;
+  private final PaymentCompensationService paymentCompensationService;
 
   // restTempalte == 다른 서버에 http 요청을 보내는 도구, Rest 방식으로 Api를 호출할 수 있는 spring 내장 클래스
 
@@ -177,8 +179,7 @@ public class KakaoPayProvider {
 
     } catch (Exception e) {
 
-      // 여기서 카카오 결제 취소 보상 처리
-      compensatePayment(payment, reservation);
+      paymentCompensationService.compensate(payment.getId());
 
       throw e;
     }
@@ -194,35 +195,5 @@ public class KakaoPayProvider {
     return headers;
   }
 
-  private void compensatePayment(Payment payment, Reservation reservation) {
 
-    try {
-
-      cancelKakaoPayment(payment, reservation);
-
-      payment.cancel();
-
-    } catch (Exception cancelException) {
-
-      payment.requireReconciliation();
-    }
-  }
-
-  private void cancelKakaoPayment(Payment payment, Reservation reservation) {
-
-    KakaoPayCancelRequest request =
-        KakaoPayCancelRequest.builder()
-            .cid(cid)
-            .tid(payment.getTid())
-            .cancelAmount(payment.getAmount())
-            .cancelTaxFreeAmount(0)
-            .build();
-
-    HttpEntity<KakaoPayCancelRequest> entity = new HttpEntity<>(request, getHeaders());
-
-    restTemplate.postForEntity(
-        "https://open-api.kakaopay.com/online/v1/payment/cancel",
-        entity,
-        KakaoPayCancelResponse.class);
-  }
 }
