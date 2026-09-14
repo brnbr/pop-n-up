@@ -32,5 +32,6 @@ public abstract class ConcurrencyTestSupport {
     registry.add("spring.datasource.password", MYSQL_CONTAINER::getPassword);
     registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
     registry.add("spring.jpa.show-sql", () -> "false");
+    registry.add("jwt.secret", () -> "as6rrc0S88l74sg6xAaJkG+QbcFUdqm+cI7B9E8hWI8=");
   }
 }
