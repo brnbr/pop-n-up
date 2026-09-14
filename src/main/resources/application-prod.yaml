@@ -10,4 +10,4 @@ spring:
 
 logging:
   level:
-    com.meetmate: info
+    com.popnup: info

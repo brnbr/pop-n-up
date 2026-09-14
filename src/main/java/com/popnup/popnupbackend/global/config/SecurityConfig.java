@@ -84,6 +84,8 @@ public class SecurityConfig {
             auth ->
                 auth.requestMatchers("/h2-console/**")
                     .permitAll()
+                    .requestMatchers("/actuator/**")
+                    .permitAll()
                     .requestMatchers(
                         "/api/v1/kakao-pay/approve",
                         "/api/v1/kakao-pay/cancel",
