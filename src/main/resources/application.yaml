@@ -2,6 +2,11 @@ spring:
   application:
     name: popnup
 
+  datasource:
+    url: jdbc:h2:mem:popnup
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
 
   profiles:
     active: local
@@ -45,5 +50,5 @@ jwt:
   # 네이버 지도 API 공동 설정 추가
 naver:
   maps:
-    client-id: ${NAVER_MAPS_CLIENT_ID:dummy-naver-id}
-    client-secret: ${NAVER_MAPS_CLIENT_SECRET:dummy-naver-secret}
+    client-id: ${NAVER_MAPS_CLIENT_ID}
+    client-secret: ${NAVER_MAPS_CLIENT_SECRET}
