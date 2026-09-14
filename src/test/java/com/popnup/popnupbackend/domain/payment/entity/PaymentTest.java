@@ -85,7 +85,7 @@ class PaymentTest {
 
     assertThatThrownBy(payment::fail)
         .isInstanceOf(IllegalStateException.class)
-        .hasMessage("결제 실패 처리 가능한 상태가 아닙니다.");
+        .hasMessage("결제 실패 처리 가능한 상태가 아닙니다..");
 
     assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
   }
