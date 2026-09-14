@@ -41,4 +41,4 @@ kakaopay:
   cid: TC0ONETIME
 
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET:cE9wTnVwQmFja2VuZFNlY3JldEtleUZvckxvY2FsRGV2ZWxvcG1lbnQyMDI2IQ==}
