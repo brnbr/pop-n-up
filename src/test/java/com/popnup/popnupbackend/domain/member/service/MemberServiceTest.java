@@ -95,20 +95,22 @@ class MemberServiceTest {
 
     when(passwordEncoder.matches("oldPassword", "encodedPassword")).thenReturn(true);
 
+    when(passwordEncoder.encode("newPassword123")).thenReturn("newEncodedPassword");
+
     MemberUpdatePasswordRequest request = new MemberUpdatePasswordRequest();
 
     ReflectionTestUtils.setField(request, "oldPassword", "oldPassword");
-
     ReflectionTestUtils.setField(request, "newPassword", "newPassword123");
 
     // when
     memberService.updatePassword(authUser, request);
 
     // then
-    assertThat(member.getPassword()).isEqualTo("newPassword123");
+    assertThat(member.getPassword()).isEqualTo("newEncodedPassword");
 
     verify(memberRepository).findById(1L);
     verify(passwordEncoder).matches("oldPassword", "encodedPassword");
+    verify(passwordEncoder).encode("newPassword123");
   }
 
   @Test

@@ -37,7 +37,7 @@ jobs:
 
       - name: Run tests
         env:
-          KAKAO__CLIENT_ID: ${{ secrets.KAKAO__CLIENT_ID }}
+          KAKAO__CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
           KAKAO__CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
           KAKAOPAY_SECRET_KEY: ${{ secrets.KAKAOPAY_SECRET_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}

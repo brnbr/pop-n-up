@@ -11,6 +11,7 @@ public enum AuthErrorCode implements ErrorCode {
   INVALID_USER_ID(HttpStatus.UNAUTHORIZED, "JWT의 사용자 정보가 올바르지 않습니다."),
   INVALID_EMAIL(HttpStatus.UNAUTHORIZED, "JWT의 이메일 정보가 올바르지 않습니다."),
   INVALID_ROLE(HttpStatus.UNAUTHORIZED, "JWT의 권한 정보가 올바르지 않습니다."),
+  EXPIRED_TOKEN(HttpStatus.UNAUTHORIZED, "만료된 JWT입니다."),
   BLACKLISTED_TOKEN(HttpStatus.UNAUTHORIZED, "로그아웃된 JWT입니다");
   private final HttpStatus httpStatus;
   private final String message;

@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -18,6 +19,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
   private final MemberRepository memberRepository;
 
   @Override
+  @Transactional
   public OAuth2User loadUser(OAuth2UserRequest request) throws OAuth2AuthenticationException {
 
     // 카카오 사용자 정보 가져오기
@@ -39,10 +41,14 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     Optional<Member> optionalMember = memberRepository.findByEmail(email);
     Member member;
     if (optionalMember.isPresent()) {
+      // 기존 회원이면 Kakao 회원으로 전환
       member = optionalMember.get();
-    } else {
-      member = Member.createOAuth2(email, nickname, providerId);
+      member.validateActive();
+      member.updateOAuth2(providerId);
 
+    } else {
+      // 기존 회원이 없으면 Kakao 회원으로 가입
+      member = Member.createOAuth2(email, nickname, providerId);
       memberRepository.save(member);
     }
 

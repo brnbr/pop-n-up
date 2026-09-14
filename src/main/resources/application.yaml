@@ -8,8 +8,7 @@ spring:
 
   config:
     import:
-      optional:file:.env[.properties]
-
+      - optional:file:.env[.properties]
   jpa:
     open-in-view: false
 
@@ -18,8 +17,8 @@ spring:
       client:
         registration:
           kakao:
-            client-id:  ${SPRING__SECURITY__OAUTH2__CLIENT__REGISTRATION__KAKAO__CLIENT_ID}
-            client-secret: ${KAKAO__CLIENT__SECRET__KEY}
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
             authorization-grant-type: authorization_code
             scope:
               - profile_nickname
