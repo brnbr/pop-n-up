@@ -1,0 +1,170 @@
+@host = http://localhost:8080
+
+
+### 1. 회원가입
+POST {{host}}/auth/signup
+Content-Type: application/json
+
+{
+  "email": "jioh035@kakao.com",
+  "password": "12341234",
+  "name": "일반회원"
+}
+
+
+### 2. 중복 이메일 회원가입
+### → 409 Conflict 예상
+POST {{host}}/auth/signup
+Content-Type: application/json
+
+{
+  "email": "user2@test.com",
+  "password": "12341234",
+  "name": "중복회원"
+}
+
+
+### 3. 로그인
+### → 응답의 Authorization JWT 복사
+POST {{host}}/auth/signin
+Content-Type: application/json
+
+{
+  "email": "user2@test.com",
+  "password": "12341234"
+}
+
+
+### 4. JWT 변수
+### → 위 로그인 응답의 JWT를 여기에 넣기
+@userToken =eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIyIiwiZW1haWwiOiJ1c2VyMkB0ZXN0LmNvbSIsIm5hbWUiOiLsnbzrsJjtmozsm5AiLCJyb2xlIjoiUk9MRV9VU0VSIiwiaWF0IjoxNzg5MzEyMDY1LCJleHAiOjE3ODkzMTU2NjV9.PUBXQFa6r0zN1iduAXnGAEHseIXU8ALrOaOWBUYn5JA
+
+### ========================================
+### 5. 내 정보 조회
+### → 200 OK 예상
+### ========================================
+
+GET {{host}}/members/me
+Authorization: Bearer {{userToken}}
+
+
+### ========================================
+### 6. JWT 없이 내 정보 조회
+### → 401 Unauthorized 예상
+### ========================================
+
+GET {{host}}/members/me
+
+
+### ========================================
+### 7. 잘못된 Authorization 형식
+### → 401 Unauthorized 예상
+### ========================================
+
+GET {{host}}/members/me
+Authorization: Basic abcdefg
+
+
+### ========================================
+### 8. 잘못된 JWT
+### → 401 Unauthorized 예상
+### ========================================
+
+GET {{host}}/members/me
+Authorization: Bearer invalid.jwt.token
+
+
+### ========================================
+### 9. 비밀번호 변경
+### → 200 OK 예상
+### ========================================
+
+PUT {{host}}/members/me/password
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "oldPassword": "12341234",
+  "newPassword": "56785678"
+}
+
+
+### ========================================
+### 10. 변경한 비밀번호로 로그인
+### → 200 OK 예상
+### ========================================
+
+POST {{host}}/auth/signin
+Content-Type: application/json
+
+{
+  "email": "user2@test.com",
+  "password": "56785678"
+}
+
+
+### ========================================
+### 11. 기존 비밀번호 로그인
+### → 실패 예상
+### ========================================
+
+POST {{host}}/auth/signin
+Content-Type: application/json
+
+{
+  "email": "user2@test.com",
+  "password": "12341234"
+}
+
+
+### ========================================
+### 12. 회원 탈퇴
+### → 200 OK 예상
+### ========================================
+
+DELETE {{host}}/members/me
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "password": "56785678"
+}
+
+
+### ========================================
+### 13. 탈퇴 후 내 정보 조회
+### → 실패 예상
+### ========================================
+
+GET {{host}}/members/me
+Authorization: Bearer {{userToken}}
+
+
+### ========================================
+### 14. 탈퇴 후 로그인
+### → 실패 예상
+### ========================================
+
+POST {{host}}/auth/signin
+Content-Type: application/json
+
+{
+  "email": "user2@test.com",
+  "password": "567865678"
+}
+
+
+### ========================================
+### OAuth2
+### ========================================
+
+### 15. Kakao 로그인 시작
+### 브라우저에서 실행
+### http://localhost:8080/oauth2/authorization/kakao
+
+### 16. Kakao 로그인 후 확인
+### - 기존 LOCAL 회원과 같은 이메일이면
+###   provider = KAKAO
+###   providerId = Kakao ID
+###   password = null
+### - 새로운 이메일이면 Kakao 회원 신규 생성
