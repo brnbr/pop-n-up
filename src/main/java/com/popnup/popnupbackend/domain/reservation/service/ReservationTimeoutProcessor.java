@@ -43,15 +43,6 @@ public class ReservationTimeoutProcessor {
   // 만료 대상 단건 취소 및 좌석 복구
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void expireSingleTimeoutReservation(Long reservationId) {
-    Reservation reservation =
-        reservationRepository
-            .findById(reservationId)
-            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
-
-    if (reservation.getStatus() != ReservationStatus.PENDING) {
-      return;
-    }
-
-    reservationCancelManager.expire(reservationId);
+    reservationCancelManager.expirePaymentTimeout(reservationId);
   }
 }
