@@ -21,3 +21,12 @@ spring:
 logging:
   level:
     com.popnup: debug
+
+
+naver:
+  maps:
+    client-id: ${NAVER_MAPS_CLIENT_ID}
+    client-secret: ${NAVER_MAPS_CLIENT_SECRET}
+
+jwt:
+  secret: ${JWT_SECRET}
