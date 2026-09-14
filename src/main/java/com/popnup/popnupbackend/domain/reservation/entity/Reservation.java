@@ -107,11 +107,20 @@ public class Reservation extends BaseEntity {
     return memberId.equals(this.member.getId());
   }
 
-  // 노쇼 자동 만료
-  public void expired() {
-    if (this.status != ReservationStatus.PENDING && this.status != ReservationStatus.CONFIRMED) {
+  // 노쇼 자동 만료 분리, paymenttimeout 경우와 noshow 경우
+  public void expirePaymentTimeout() {
+    if (this.status != ReservationStatus.PENDING) {
       return;
     }
+
+    this.status = ReservationStatus.EXPIRED;
+  }
+
+  public void expireNoShow() {
+    if (this.status != ReservationStatus.CONFIRMED) {
+      return;
+    }
+
     this.status = ReservationStatus.EXPIRED;
   }
 }

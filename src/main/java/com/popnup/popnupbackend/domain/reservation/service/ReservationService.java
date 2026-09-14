@@ -176,7 +176,7 @@ public class ReservationService {
 
     for (Reservation reservation : expiredList) {
       try {
-        reservationCancelManager.expire(reservation.getId());
+        reservationCancelManager.expireNoShow(reservation.getId());
       } catch (Exception e) {
         log.error("[expiredPastReservation] 예약 단건 만료 처리 실패 (ID: {})", reservation.getId(), e);
       }

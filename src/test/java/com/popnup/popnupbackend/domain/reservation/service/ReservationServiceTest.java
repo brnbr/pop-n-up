@@ -471,7 +471,7 @@ class ReservationServiceTest {
 
       log.info("[expirePastReservation.empty] verify reservationCancelManager.expire never called");
 
-      verify(reservationCancelManager, never()).expire(anyLong());
+      verify(reservationCancelManager, never()).expireNoShow(anyLong());
     }
 
     @Test
@@ -488,8 +488,8 @@ class ReservationServiceTest {
 
       log.info("[expirePastReservation.withTargets] verify expire called for id=10 and id=11");
 
-      verify(reservationCancelManager, times(1)).expire(10L);
-      verify(reservationCancelManager, times(1)).expire(11L);
+      verify(reservationCancelManager, times(1)).expireNoShow(10L);
+      verify(reservationCancelManager, times(1)).expireNoShow(11L);
     }
   }
 

@@ -66,10 +66,13 @@ class ReservationCancelManagerTest {
     schedule =
         Schedule.createSchedule(
             popup, LocalDate.now().plusDays(1), LocalTime.of(10, 0), LocalTime.of(11, 0), 10);
+
     ReflectionTestUtils.setField(schedule, "id", 100L);
+
     schedule.addReservation(2, LocalDateTime.now());
 
     reservation = Reservation.createReservation("R1", member, schedule, 2);
+
     ReflectionTestUtils.setField(reservation, "id", 10L);
   }
 
@@ -82,6 +85,7 @@ class ReservationCancelManagerTest {
     void successFromPending() {
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
+
       given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.of(schedule));
 
       log.info(
@@ -91,11 +95,14 @@ class ReservationCancelManagerTest {
       reservationCancelManager.cancel(10L);
 
       log.info(
-          "[cancel.successFromPending] expectedStatus=CANCELED actualStatus={} expectedCapacity=0 actualCapacity={}",
+          "[cancel.successFromPending] "
+              + "expectedStatus=CANCELED actualStatus={} "
+              + "expectedCapacity=0 actualCapacity={}",
           reservation.getStatus(),
           schedule.getNowCapacity());
 
       assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CANCELED);
+
       assertThat(schedule.getNowCapacity()).isZero();
     }
 
@@ -103,19 +110,23 @@ class ReservationCancelManagerTest {
     @DisplayName("이미 CANCELED면 멱등하게 무시하고 좌석도 건드리지 않는다")
     void idempotentWhenAlreadyCanceled() {
       reservation.cancel();
+
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
 
       log.info(
-          "[cancel.idempotentWhenAlreadyCanceled] input(reservationId=10, currentStatus=CANCELED)");
+          "[cancel.idempotentWhenAlreadyCanceled] "
+              + "input(reservationId=10, currentStatus=CANCELED)");
 
       reservationCancelManager.cancel(10L);
 
       log.info(
-          "[cancel.idempotentWhenAlreadyCanceled] expectedCapacity(unchanged)=2 actualCapacity={}",
+          "[cancel.idempotentWhenAlreadyCanceled] "
+              + "expectedCapacity(unchanged)=2 actualCapacity={}",
           schedule.getNowCapacity());
 
       verify(scheduleRepository, never()).findByIdWithPessimisticLock(100L);
+
       assertThat(schedule.getNowCapacity()).isEqualTo(2);
     }
 
@@ -124,22 +135,24 @@ class ReservationCancelManagerTest {
     void failWhenUsed() {
       reservation.confirm(true);
       reservation.checkIn();
+
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
 
-      log.info("[cancel.failWhenUsed] input(reservationId=10, currentStatus=USED)");
+      log.info("[cancel.failWhenUsed] " + "input(reservationId=10, currentStatus=USED)");
 
       ServiceException exception =
           assertThrows(ServiceException.class, () -> reservationCancelManager.cancel(10L));
 
       log.info(
-          "[cancel.failWhenUsed] expectedErrorCode={} actualErrorCode={} capacityUnchanged={}",
+          "[cancel.failWhenUsed] " + "expectedErrorCode={} actualErrorCode={} capacityUnchanged={}",
           ReservationErrorCode.ALREADY_PROCESSED_RESERVATION,
           exception.getErrorCode(),
           schedule.getNowCapacity());
 
       assertThat(exception.getErrorCode())
           .isEqualTo(ReservationErrorCode.ALREADY_PROCESSED_RESERVATION);
+
       assertThat(schedule.getNowCapacity()).isEqualTo(2);
 
       verify(scheduleRepository, never()).findByIdWithPessimisticLock(100L);
@@ -156,7 +169,7 @@ class ReservationCancelManagerTest {
           assertThrows(ServiceException.class, () -> reservationCancelManager.cancel(999L));
 
       log.info(
-          "[cancel.notFound] expectedErrorCode={} actualErrorCode={}",
+          "[cancel.notFound] " + "expectedErrorCode={} actualErrorCode={}",
           ReservationErrorCode.RESERVATION_NOT_FOUND,
           exception.getErrorCode());
 
@@ -168,15 +181,16 @@ class ReservationCancelManagerTest {
     void scheduleNotFound() {
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
+
       given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.empty());
 
-      log.info("[cancel.scheduleNotFound] input(reservationId=10, scheduleId=100)");
+      log.info("[cancel.scheduleNotFound] " + "input(reservationId=10, scheduleId=100)");
 
       ServiceException exception =
           assertThrows(ServiceException.class, () -> reservationCancelManager.cancel(10L));
 
       log.info(
-          "[cancel.scheduleNotFound] expectedErrorCode={} actualErrorCode={}",
+          "[cancel.scheduleNotFound] " + "expectedErrorCode={} actualErrorCode={}",
           ScheduleErrorCode.SCHEDULE_NOT_FOUND,
           exception.getErrorCode());
 
@@ -187,113 +201,180 @@ class ReservationCancelManagerTest {
     @DisplayName("CONFIRMED 예약을 취소하면 CANCELED로 바뀌고 좌석이 복구된다")
     void successFromConfirmed() {
       reservation.confirm(true);
+
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
+
       given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.of(schedule));
 
       log.info(
-          "[cancel.successFromConfirmed] input(reservationId=10, beforeCapacity={})",
+          "[cancel.successFromConfirmed] " + "input(reservationId=10, beforeCapacity={})",
           schedule.getNowCapacity());
 
       reservationCancelManager.cancel(10L);
 
       log.info(
-          "[cancel.successFromConfirmed] expectedStatus=CANCELED actualStatus={} expectedCapacity=0 actualCapacity={}",
+          "[cancel.successFromConfirmed] "
+              + "expectedStatus=CANCELED actualStatus={} "
+              + "expectedCapacity=0 actualCapacity={}",
           reservation.getStatus(),
           schedule.getNowCapacity());
 
       assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CANCELED);
+
       assertThat(schedule.getNowCapacity()).isZero();
     }
   }
 
   @Nested
-  @DisplayName("expire 검증")
-  class Expire {
+  @DisplayName("결제 타임아웃 만료 검증")
+  class ExpirePaymentTimeout {
 
     @Test
-    @DisplayName("CONFIRMED 예약을 만료하면(노쇼) EXPIRED로 바뀌고 좌석이 복구된다")
-    void successFromConfirmed() {
-      reservation.confirm(true);
-      given(reservationRepository.findByIdWithPessimisticLock(10L))
-          .willReturn(Optional.of(reservation));
-      given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.of(schedule));
-
-      log.info(
-          "[expire.successFromConfirmed] input(reservationId=10, beforeCapacity={})",
-          schedule.getNowCapacity());
-
-      reservationCancelManager.expire(10L);
-
-      log.info(
-          "[expire.successFromConfirmed] expectedStatus=EXPIRED actualStatus={} expectedCapacity=0 actualCapacity={}",
-          reservation.getStatus(),
-          schedule.getNowCapacity());
-
-      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
-      assertThat(schedule.getNowCapacity()).isZero();
-    }
-
-    @Test
-    @DisplayName("PENDING 예약을 만료하면(결제 타임아웃) EXPIRED로 바뀌고 좌석이 복구된다")
+    @DisplayName("PENDING 예약은 결제 타임아웃 시 EXPIRED로 변경되고 좌석이 복구된다")
     void successFromPending() {
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
+
       given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.of(schedule));
 
       log.info(
-          "[expire.successFromPending] input(reservationId=10, beforeCapacity={})",
+          "[expirePaymentTimeout.successFromPending] "
+              + "input(reservationId=10, status=PENDING, beforeCapacity={})",
           schedule.getNowCapacity());
 
-      reservationCancelManager.expire(10L);
+      reservationCancelManager.expirePaymentTimeout(10L);
 
       log.info(
-          "[expire.successFromPending] expectedStatus=EXPIRED actualStatus={} expectedCapacity=0 actualCapacity={}",
+          "[expirePaymentTimeout.successFromPending] "
+              + "expectedStatus=EXPIRED actualStatus={} "
+              + "expectedCapacity=0 actualCapacity={}",
           reservation.getStatus(),
           schedule.getNowCapacity());
 
       assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+
       assertThat(schedule.getNowCapacity()).isZero();
     }
 
     @Test
-    @DisplayName("이미 종료 상태(CANCELED)면 멱등하게 무시한다")
-    void idempotentWhenAlreadyCanceled() {
-      reservation.cancel();
+    @DisplayName("CONFIRMED 예약은 결제 타임아웃으로 만료되지 않는다")
+    void doesNotExpireConfirmed() {
+      reservation.confirm(true);
+
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
 
       log.info(
-          "[expire.idempotentWhenAlreadyCanceled] input(reservationId=10, currentStatus=CANCELED)");
+          "[expirePaymentTimeout.doesNotExpireConfirmed] "
+              + "input(reservationId=10, status=CONFIRMED)");
 
-      reservationCancelManager.expire(10L);
+      reservationCancelManager.expirePaymentTimeout(10L);
 
       log.info(
-          "[expire.idempotentWhenAlreadyCanceled] expectedStatus(unchanged)=CANCELED actualStatus={}",
-          reservation.getStatus());
+          "[expirePaymentTimeout.doesNotExpireConfirmed] "
+              + "expectedStatus=CONFIRMED actualStatus={} "
+              + "expectedCapacity=2 actualCapacity={}",
+          reservation.getStatus(),
+          schedule.getNowCapacity());
+
+      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
+
+      assertThat(schedule.getNowCapacity()).isEqualTo(2);
 
       verify(scheduleRepository, never()).findByIdWithPessimisticLock(100L);
-      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CANCELED);
     }
 
     @Test
-    @DisplayName("이미 EXPIRED면 멱등하게 무시한다")
-    void idempotentWhenAlreadyExpired() {
-      reservation.expired(); // PENDING -> EXPIRED (락 없이 직접 상태 전이)
+    @DisplayName("이미 CANCELED 예약은 결제 타임아웃으로 만료되지 않는다")
+    void doesNotExpireCanceled() {
+      reservation.cancel();
+
       given(reservationRepository.findByIdWithPessimisticLock(10L))
           .willReturn(Optional.of(reservation));
 
-      log.info(
-          "[expire.idempotentWhenAlreadyExpired] input(reservationId=10, currentStatus=EXPIRED)");
+      reservationCancelManager.expirePaymentTimeout(10L);
 
-      reservationCancelManager.expire(10L);
+      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CANCELED);
 
-      log.info(
-          "[expire.idempotentWhenAlreadyExpired] expectedStatus(unchanged)=EXPIRED actualStatus={}",
-          reservation.getStatus());
+      assertThat(schedule.getNowCapacity()).isEqualTo(2);
 
       verify(scheduleRepository, never()).findByIdWithPessimisticLock(100L);
+    }
+  }
+
+  @Nested
+  @DisplayName("노쇼 만료 검증")
+  class ExpireNoShow {
+
+    @Test
+    @DisplayName("CONFIRMED 예약은 노쇼 처리 시 EXPIRED로 변경되고 좌석이 복구된다")
+    void successFromConfirmed() {
+      reservation.confirm(true);
+
+      given(reservationRepository.findByIdWithPessimisticLock(10L))
+          .willReturn(Optional.of(reservation));
+
+      given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.of(schedule));
+
+      log.info(
+          "[expireNoShow.successFromConfirmed] "
+              + "input(reservationId=10, status=CONFIRMED, beforeCapacity={})",
+          schedule.getNowCapacity());
+
+      reservationCancelManager.expireNoShow(10L);
+
+      log.info(
+          "[expireNoShow.successFromConfirmed] "
+              + "expectedStatus=EXPIRED actualStatus={} "
+              + "expectedCapacity=0 actualCapacity={}",
+          reservation.getStatus(),
+          schedule.getNowCapacity());
+
       assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+
+      assertThat(schedule.getNowCapacity()).isZero();
+    }
+
+    @Test
+    @DisplayName("PENDING 예약은 노쇼 처리로 만료되지 않는다")
+    void doesNotExpirePending() {
+      given(reservationRepository.findByIdWithPessimisticLock(10L))
+          .willReturn(Optional.of(reservation));
+
+      log.info("[expireNoShow.doesNotExpirePending] " + "input(reservationId=10, status=PENDING)");
+
+      reservationCancelManager.expireNoShow(10L);
+
+      log.info(
+          "[expireNoShow.doesNotExpirePending] "
+              + "expectedStatus=PENDING actualStatus={} "
+              + "expectedCapacity=2 actualCapacity={}",
+          reservation.getStatus(),
+          schedule.getNowCapacity());
+
+      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.PENDING);
+
+      assertThat(schedule.getNowCapacity()).isEqualTo(2);
+
+      verify(scheduleRepository, never()).findByIdWithPessimisticLock(100L);
+    }
+
+    @Test
+    @DisplayName("이미 CANCELED 예약은 노쇼 처리로 만료되지 않는다")
+    void doesNotExpireCanceled() {
+      reservation.cancel();
+
+      given(reservationRepository.findByIdWithPessimisticLock(10L))
+          .willReturn(Optional.of(reservation));
+
+      reservationCancelManager.expireNoShow(10L);
+
+      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CANCELED);
+
+      assertThat(schedule.getNowCapacity()).isEqualTo(2);
+
+      verify(scheduleRepository, never()).findByIdWithPessimisticLock(100L);
     }
   }
 }
