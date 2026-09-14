@@ -17,8 +17,8 @@ public class Payment {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @OneToOne(fetch = FetchType.LAZY) // 결제 1건에 예약 1건이라 가정
-  @JoinColumn(name = "reservation_id", nullable = false)
+  @OneToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "reservation_id", nullable = false, unique = true)
   private Reservation reservation;
 
   @Column(nullable = false)

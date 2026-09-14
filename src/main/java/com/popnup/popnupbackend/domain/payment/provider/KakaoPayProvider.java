@@ -15,6 +15,7 @@ import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
 import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -61,26 +62,43 @@ public class KakaoPayProvider {
             .findById(request.getReservationId())
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    // 예약자 본인인지 확인
+    // 2. 예약자 본인인지 확인
     if (!reservation.getMember().getId().equals(memberId)) {
       throw PayErrorCode.RESERVATION_NOT_MATCH.toException();
     }
 
-    // 팝업 정보 가져오기
+    // 3. 기존 Payment 조회
+    Optional<Payment> existingPayment = paymentRepository.findByReservationId(reservation.getId());
+
+    Payment payment;
+
+    if (existingPayment.isPresent()) {
+      payment = existingPayment.get();
+
+      // 이미 결제된 경우 중복 결제 방지
+      if (payment.getStatus() == PaymentStatus.PAID) {
+        throw PayErrorCode.ALREADY_PAID.toException();
+      }
+    } else {
+      // 기존 Payment가 없으면 팝업 정보를 이용해 새 결제 생성
+
+      Popup popup = reservation.getSchedule().getPopup();
+
+      Integer totalPrice = popup.getPrice() * reservation.getPersonCount();
+
+      payment = new Payment(reservation, reservation.getReservationNumber(), totalPrice);
+
+      payment = paymentRepository.save(payment);
+    }
+
+    // 4. 팝업 정보
     Popup popup = reservation.getSchedule().getPopup();
 
-    // 서버에서 결제 정보 계산
     String itemName = popup.getTitle();
-
     Integer quantity = reservation.getPersonCount();
-
     Integer totalPrice = popup.getPrice() * reservation.getPersonCount();
 
-    // payment 생성
-    Payment payment = new Payment(reservation, reservation.getReservationNumber(), totalPrice);
-
-    paymentRepository.save(payment);
-    // 서버에 보낼 결제 준비 정보
+    // 5. 카카오페이에 보낼 결제 준비 정보
     KakaoPayReadyRequest kakaoPayReadyRequest =
         KakaoPayReadyRequest.builder()
             .cid(cid)
@@ -97,22 +115,20 @@ public class KakaoPayProvider {
             .build();
 
     HttpEntity<KakaoPayReadyRequest> entity = new HttpEntity<>(kakaoPayReadyRequest, getHeaders());
-    // HTTP 요청에 필요한 Body랑 header 묶음
 
-    // rest api 호출 이후 응답받을 때까지 기다리는 동기 방식
-    // .class -> "이 클래스의 타입 정보를 주는 것"
+    // 6. 카카오페이 API 호출
     ResponseEntity<KakaoPayReadyResponse> response =
         restTemplate.postForEntity(
             "https://open-api.kakaopay.com/online/v1/payment/ready",
             entity,
             KakaoPayReadyResponse.class);
 
-    // 카카오페이가 발급해준 tid(결제 거래 ID) 세션에 저장
+    // 7. tid 저장
     KakaoPayReadyResponse body = Objects.requireNonNull(response.getBody());
 
     payment.setTid(body.getTid());
 
-    return response.getBody();
+    return body;
   }
 
   // apporove API : 결제 성공시 자동으로 호출되는 결제 승인 api
