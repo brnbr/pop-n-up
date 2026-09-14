@@ -5,6 +5,8 @@ plugins {
     id 'com.diffplug.spotless' version '6.23.3' // Spotless 플러그인
 }
 
+ext['testcontainers.version'] = '2.0.5'
+
 group = 'com'
 version = '0.0.1-SNAPSHOT'
 description = 'popnup'
@@ -25,11 +27,12 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
     implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
     runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.13.0'
-
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'
@@ -45,6 +48,7 @@ dependencies {
     runtimeOnly 'org.springframework.boot:spring-boot-h2console'
     testAnnotationProcessor 'org.projectlombok:lombok'
 
+
     //querydsl
     implementation 'io.github.openfeign.querydsl:querydsl-jpa:7.5'
     annotationProcessor 'io.github.openfeign.querydsl:querydsl-apt:7.5:jpa'
@@ -55,6 +59,14 @@ dependencies {
     //ZXing
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.zxing:javase:3.5.3'
+
+    //크롤링
+    implementation 'org.jsoup:jsoup:1.18.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-mysql'
 }
 
 tasks.named('test') {
@@ -69,7 +81,6 @@ spotless {
         endWithNewline()
     }
 }
-
 
 tasks.named('compileJava') {
     dependsOn 'spotlessApply'

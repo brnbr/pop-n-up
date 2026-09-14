@@ -32,6 +32,9 @@ public class PopupResponse {
   private final LocalDateTime createdAt;
   private final LocalDateTime updatedAt;
 
+  // 1. 거리 필드 추가 (단위: km)
+  private final Double distance;
+
   @Builder
   public PopupResponse(
       Long id,
@@ -50,7 +53,8 @@ public class PopupResponse {
       Long viewCount,
       List<PopupImageResponse> images,
       LocalDateTime createdAt,
-      LocalDateTime updatedAt) {
+      LocalDateTime updatedAt,
+      Double distance) { // 2. 생성자 파라미터에 distance 추가
     this.id = id;
     this.title = title;
     this.description = description;
@@ -68,9 +72,16 @@ public class PopupResponse {
     this.images = images;
     this.createdAt = createdAt;
     this.updatedAt = updatedAt;
+    this.distance = distance; // 3. 할당
   }
 
+  // 기존 팩토리 메서드 (기존 1번 맵 조회, 단건 조회용 - distance는 자동으로 null)
   public static PopupResponse from(Popup popup) {
+    return from(popup, null);
+  }
+
+  // 4. 거리 정보를 함께 넘겨주는 오버로딩 메서드 (2번 주변 팝업 조회용)
+  public static PopupResponse from(Popup popup, Double distance) {
     return PopupResponse.builder()
         .id(popup.getId())
         .title(popup.getTitle())
@@ -94,6 +105,7 @@ public class PopupResponse {
                 : List.of())
         .createdAt(popup.getCreatedAt())
         .updatedAt(popup.getUpdatedAt())
+        .distance(distance)
         .build();
   }
 }

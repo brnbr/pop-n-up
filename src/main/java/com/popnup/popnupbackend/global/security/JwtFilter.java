@@ -1,10 +1,11 @@
-package com.popnup.popnupbackend.global.config;
+package com.popnup.popnupbackend.global.security;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.member.enums.Role;
 import com.popnup.popnupbackend.global.error.AuthErrorCode;
 import com.popnup.popnupbackend.global.error.ServiceException;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,18 +26,22 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class JwtFilter extends OncePerRequestFilter {
 
   private final JwtUtil jwtUtil;
+  private final JwtBlacklistService jwtBlacklistService;
 
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
 
+    // 카카오페이 결제 승인 콜백은 JWT 인증 제외, 로그인
     String uri = request.getRequestURI();
 
-    // 카카오페이 결제 승인 콜백은 JWT 인증 제외
-    if (uri.equals("/api/v1/kakao-pay/approve")
+    if (uri.equals("/auth/signup")
+        || uri.equals("/auth/signin")
+        || uri.equals("/api/v1/kakao-pay/approve")
         || uri.equals("/api/v1/kakao-pay/cancel")
         || uri.equals("/api/v1/kakao-pay/fail")) {
+
       filterChain.doFilter(request, response);
       return;
     }
@@ -53,10 +58,19 @@ public class JwtFilter extends OncePerRequestFilter {
     String token = authorizationHeader.substring("Bearer ".length());
 
     try {
+      if (jwtBlacklistService.isBlacklisted(token)) {
+        sendUnauthorized(response, AuthErrorCode.BLACKLISTED_TOKEN);
+        return;
+      }
       authenticate(token, request);
+    } catch (ExpiredJwtException e) {
+      sendUnauthorized(response, AuthErrorCode.EXPIRED_TOKEN);
+      return;
+
     } catch (JwtException e) {
       sendUnauthorized(response, AuthErrorCode.INVALID_TOKEN);
       return;
+
     } catch (ServiceException e) {
       sendUnauthorized(response, (AuthErrorCode) e.getErrorCode());
       return;

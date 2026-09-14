@@ -8,8 +8,11 @@ import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -19,10 +22,20 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
 
   private final JPAQueryFactory queryFactory;
 
-  @Override
-  public List<Reservation> getAllReservation(Long memberId) {
+  private JPAQuery<Reservation> selectReservationWithDetails() {
     return queryFactory
         .selectFrom(reservation)
+        .join(reservation.member, member)
+        .fetchJoin()
+        .join(reservation.schedule, schedule)
+        .fetchJoin()
+        .join(schedule.popup, popup)
+        .fetchJoin();
+  }
+
+  @Override
+  public List<Reservation> getAllReservation(Long memberId) {
+    return selectReservationWithDetails()
         .where(reservation.member.id.eq(memberId))
         .orderBy(reservation.createdAt.desc())
         .fetch();
@@ -48,14 +61,7 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   @Override
   public List<Reservation> findAdminReservations(
       Long popupId, LocalDate scheduleDate, ReservationStatus status) {
-    return queryFactory
-        .selectFrom(reservation)
-        .join(reservation.member, member)
-        .fetchJoin()
-        .join(reservation.schedule, schedule)
-        .fetchJoin()
-        .join(schedule.popup, popup)
-        .fetchJoin()
+    return selectReservationWithDetails()
         .where(popupIdEq(popupId), scheduleDateEq(scheduleDate), statusEq(status))
         .orderBy(
             reservation.schedule.scheduleDate.asc(),
@@ -65,19 +71,48 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   }
 
   @Override
-  public Optional<Reservation> findByReservationNumber(String reservationNumber) {
+  public List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime) {
+    return queryFactory
+        .selectFrom(reservation)
+        .join(reservation.schedule, schedule)
+        .fetchJoin()
+        .where(
+            reservation.status.eq(ReservationStatus.CONFIRMED),
+            schedule
+                .scheduleDate
+                .lt(today)
+                .or(schedule.scheduleDate.eq(today).and(schedule.endTime.lt(currentTime))))
+        .fetch();
+  }
+
+  @Override
+  public Optional<Reservation> findByReservationNumberWithPessimisticLock(
+      String reservationNumber) {
     Reservation result =
         queryFactory
             .selectFrom(reservation)
-            .join(reservation.member, member)
-            .fetchJoin()
             .where(reservation.reservationNumber.eq(reservationNumber))
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .setHint("jakarta.persistence.lock.timeout", 3000)
             .fetchOne();
 
     return Optional.ofNullable(result);
   }
 
-  // dsl 적용 후 삭제
+  @Override
+  public Optional<Reservation> findByIdWithPessimisticLock(Long id) {
+    Reservation result =
+        queryFactory
+            .selectFrom(reservation)
+            .where(reservation.id.eq(id))
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .setHint("jakarta.persistence.lock.timeout", 3000)
+            .fetchOne();
+
+    return Optional.ofNullable(result);
+  }
+
+  // todo dsl 적용 후 삭제
   private BooleanExpression popupIdEq(Long popupId) {
     return popupId != null ? reservation.schedule.popup.id.eq(popupId) : null;
   }

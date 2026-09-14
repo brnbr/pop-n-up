@@ -8,7 +8,7 @@ spring:
 
   config:
     import:
-      optional:file:.env
+      - optional:file:.env[.properties]
   jpa:
     open-in-view: false
 
@@ -17,8 +17,8 @@ spring:
       client:
         registration:
           kakao:
-            client-id:  ${SPRING__SECURITY__OAUTH2__CLIENT__REGISTRATION__KAKAO__CLIENT_ID}
-            client-secret: ${KAKAO__CLIENT__SECRET__KEY}
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
             authorization-grant-type: authorization_code
             scope:
               - profile_nickname
@@ -41,3 +41,9 @@ kakaopay:
 
 jwt:
   secret: ${JWT_SECRET}
+
+  # 네이버 지도 API 공동 설정 추가
+naver:
+  maps:
+    client-id: ${NAVER_MAPS_CLIENT_ID:dummy-naver-id}
+    client-secret: ${NAVER_MAPS_CLIENT_SECRET:dummy-naver-secret}

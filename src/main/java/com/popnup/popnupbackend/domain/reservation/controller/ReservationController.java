@@ -48,7 +48,7 @@ public class ReservationController {
   }
 
   // 체크인
-  @PostMapping("/reservations/check-in")
+  @PostMapping("/admin/reservations/check-in")
   public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
       @Valid @RequestBody CheckInRequest request) {
     return ResponseEntity.ok(ApiResponse.success(reservationService.checkIn(request)));
@@ -62,7 +62,7 @@ public class ReservationController {
     return ResponseEntity.ok(ApiResponse.success());
   }
 
-  // 전체 조회
+  // 예약 목록 전체 조회
   @GetMapping("/reservations")
   public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAll(
       @AuthenticationPrincipal AuthUser authUser) {
@@ -70,7 +70,7 @@ public class ReservationController {
         ApiResponse.success(reservationService.allReservations(authUser.getId())));
   }
 
-  // 단 건 조회
+  // 예약 단 건 조회
   @GetMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<ReservationResponse>> getOne(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
@@ -78,7 +78,7 @@ public class ReservationController {
         ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
   }
 
-  // 관리자 - 전체 조회
+  // 관리자 - 예약 목록 전체 조회
   @GetMapping("/admin/reservations")
   public ResponseEntity<ApiResponse<List<AdminReservationResponse>>> getAllAdmin(
       @RequestParam Long popupId,

@@ -1,5 +1,6 @@
 package com.popnup.popnupbackend.global.config;
 
+import com.popnup.popnupbackend.global.security.JwtFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -23,6 +24,8 @@ import org.springframework.security.web.authentication.AnonymousAuthenticationFi
 public class SecurityConfig {
 
   private final JwtFilter jwtFilter;
+  private final CustomOAuth2UserService customOAuth2UserService;
+  private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
 
   @Bean
   public PasswordEncoder passwordEncoder() {
@@ -44,15 +47,39 @@ public class SecurityConfig {
         .exceptionHandling(
             exception ->
                 exception
+                    // 인증되지 않은 사용자가 접근했을 때 → 401
                     .authenticationEntryPoint(
-                        (request, response, cause) ->
+                        (request, response, cause) -> {
+                          String authorization = request.getHeader("Authorization");
+
+                          // Authorization 헤더 자체가 없는 경우
+                          if (authorization == null) {
                             sendError(
                                 response,
                                 HttpServletResponse.SC_UNAUTHORIZED,
-                                "Authorization 헤더에 JWT가 필요합니다."))
+                                "Authorization 헤더가 없습니다.");
+                            return;
+                          }
+
+                          // Bearer 형식이 아닌 경우
+                          if (!authorization.startsWith("Bearer ")) {
+                            sendError(
+                                response,
+                                HttpServletResponse.SC_UNAUTHORIZED,
+                                "Authorization 헤더 형식이 올바르지 않습니다.");
+                            return;
+                          }
+
+                          // 헤더는 있지만 인증에 실패한 경우
+                          sendError(response, HttpServletResponse.SC_UNAUTHORIZED, "인증에 실패했습니다.");
+                        })
+
+                    // 인증은 됐지만 권한이 부족할 때 → 403
                     .accessDeniedHandler(
                         (request, response, cause) ->
                             sendError(response, HttpServletResponse.SC_FORBIDDEN, "접근 권한이 없습니다.")))
+
+        // URL별 접근 권한 설정
         .authorizeHttpRequests(
             auth ->
                 auth.requestMatchers("/h2-console/**")
@@ -74,11 +101,27 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/oauth2/**", "/login/**")
                     .permitAll()
-                    .requestMatchers(HttpMethod.GET, "/admin")
+                    .requestMatchers(
+                        HttpMethod.GET, "/popups/**") // GET 요청만 비로그인 접근 허용 (지도, 목록, 상세)
+                    .permitAll()
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/admin/**") // admin 으로 시작하는 모든 요청모든 요청(POST, PUT, DELETE 등)은 ADMIN 권한 필수
                     .hasRole("ADMIN")
+                    .requestMatchers("/redis/**")
+                    .permitAll()
                     .anyRequest()
                     .authenticated())
-        .addFilterBefore(jwtFilter, AnonymousAuthenticationFilter.class) // JwtFilter 등록
+
+        // OAuth2 로그인
+        .oauth2Login(
+            oauth2 ->
+                oauth2
+                    .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
+                    .successHandler(oAuth2LoginSuccessHandler))
+
+        // JwtFilter를 Spring Security 필터 체인에 등록
+        .addFilterBefore(jwtFilter, AnonymousAuthenticationFilter.class)
         .build();
   }
 

@@ -1,6 +1,6 @@
 package com.popnup.popnupbackend.domain.member.enums;
 
-import com.popnup.popnupbackend.domain.member.exception.RoleNotMatchException;
+import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import java.util.Arrays;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +17,7 @@ public enum Role {
     return Arrays.stream(Role.values())
         .filter(value -> value.name().equalsIgnoreCase(role))
         .findFirst()
-        .orElseThrow(() -> new RoleNotMatchException());
+        .orElseThrow(MemberErrorCode.ROLE_NOT_MATCH::toException);
   }
 
   public static class Authority {

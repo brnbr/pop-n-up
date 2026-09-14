@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -27,5 +28,16 @@ public class AuthController {
   public ResponseEntity<ApiResponse<Void>> signin(@Valid @RequestBody SigninRequest request) {
     String jwt = authService.signin(request);
     return ResponseEntity.ok().header("Authorization", "Bearer " + jwt).body(ApiResponse.success());
+  }
+
+  @PostMapping("/auth/logout")
+  public ResponseEntity<ApiResponse<Void>> logout(
+      @RequestHeader("Authorization") String authorization) {
+
+    String token = authorization.replace("Bearer ", "");
+
+    authService.logout(token);
+
+    return ResponseEntity.ok(ApiResponse.success());
   }
 }
