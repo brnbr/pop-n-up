@@ -2,6 +2,11 @@ spring:
   application:
     name: popnup
 
+  datasource:
+    url: jdbc:h2:mem:popnup
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
 
   profiles:
     active: local
