@@ -77,7 +77,12 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/oauth2/**", "/login/**")
                     .permitAll()
-                    .requestMatchers(HttpMethod.GET, "/admin/**")
+                    .requestMatchers(
+                        HttpMethod.GET, "/popups/**") // GET 요청만 비로그인 접근 허용 (지도, 목록, 상세)
+                    .permitAll()
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/admin/**") // admin 으로 시작하는 모든 요청모든 요청(POST, PUT, DELETE 등)은 ADMIN 권한 필수
                     .hasRole("ADMIN")
                     .requestMatchers("/oauth2/**")
                     .permitAll()

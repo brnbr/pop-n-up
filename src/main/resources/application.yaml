@@ -37,8 +37,14 @@ spring:
 
 
 kakaopay:
-  secretKey: ${KAKAOPAY_SECRET_KEY}
+  secretKey: ${KAKAOPAY_SECRET_KEY:DEV_TEST_DUMMY_KEY_12345}
   cid: TC0ONETIME
 
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET:c29tZS1qd3Qtc2VjcmV0LWtleS1leGFtcGxlLWZvci1sb2NhbC10ZXN0aW5nMTIzNDU=}
+
+  # 네이버 지도 API 공동 설정 추가
+naver:
+  maps:
+    client-id: ${NAVER_MAPS_CLIENT_ID:dummy-naver-id}
+    client-secret: ${NAVER_MAPS_CLIENT_SECRET:dummy-naver-secret}
