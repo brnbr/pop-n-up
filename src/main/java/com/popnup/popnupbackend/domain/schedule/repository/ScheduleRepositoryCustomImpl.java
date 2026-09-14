@@ -5,9 +5,11 @@ import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule
 
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
@@ -44,5 +46,18 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
             .fetchFirst();
 
     return fetchOne != null;
+  }
+
+  @Override
+  public Optional<Schedule> findByIdWithPessimisticLock(Long id) {
+    Schedule result =
+        queryFactory
+            .selectFrom(schedule)
+            .where(schedule.id.eq(id))
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .setHint("jakarta.persistence.lock.timeout", 3000)
+            .fetchOne();
+
+    return Optional.ofNullable(result);
   }
 }

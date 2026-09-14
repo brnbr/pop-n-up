@@ -1,10 +1,19 @@
 package com.popnup.popnupbackend.domain.qrcode.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.LuminanceSource;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.Result;
+import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
+import com.popnup.popnupbackend.domain.qrcode.exception.QrErrorCode;
+import com.popnup.popnupbackend.global.error.ServiceException;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,58 +23,90 @@ class QrServiceTest {
 
   private final QrService qrService = new QrService();
 
+  // PNG 파일 시그니처(매직 바이트): 89 50 4E 47 0D 0A 1A 0A
+  private static final byte[] PNG_SIGNATURE = {
+    (byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+  };
+
   @Test
-  @DisplayName("텍스트 기반 PNG 바이트 배열 생성 및 콘솔 QR 출력")
-  void generateQrCodeImage_logging() {
-    // 1. Given (입력값)
-    String input = "R20260907TEST1234";
-    String expected = "PNG 매직넘버 일치 및 바이너리 생성 (not empty)";
+  @DisplayName("정상 문자열이면 PNG 시그니처로 시작하는 바이트 배열을 반환한다")
+  void generateQrCodeImage_success() {
+    String content = "R20260912TEST0001";
 
-    // 2. When (실제 실행)
-    byte[] actualBytes = qrService.generateQrCodeImage(input);
-    boolean isPng =
-        actualBytes != null
-            && actualBytes.length > 4
-            && actualBytes[0] == (byte) 0x89
-            && actualBytes[1] == (byte) 0x50; // 'P'
-    String actual = "크기: " + actualBytes.length + " bytes, PNG 포맷 일치 여부: " + isPng;
+    log.info("[generateQrCodeImage.success] input(content={})", content);
 
-    // 3. Log (결과 및 콘솔 QR 시각화)
-    String asciiQr = renderAsciiQr(input, 25, 25);
+    byte[] result = qrService.generateQrCodeImage(content);
 
-    log.info(
-        "\n================ [TEST RUN] ================"
-            + "\n📌 테스트명    : PNG 바이트 배열 생성 검증"
-            + "\n📥 입력값      : text = {}"
-            + "\n🎯 예상 결과   : {}"
-            + "\n🔍 실제 결과   : {}"
-            + "\n📱 콘솔 QR 스캔 :\n{}"
-            + "\n============================================",
-        input,
-        expected,
-        actual,
-        asciiQr);
+    log.info("[generateQrCodeImage.success] resultByteLength={}", result.length);
 
-    // 4. Then (검증)
-    assertThat(actualBytes).isNotNull().isNotEmpty();
-    assertThat(isPng).isTrue();
+    assertThat(result).isNotEmpty();
+    assertThat(result).startsWith(PNG_SIGNATURE);
   }
 
-  /** 터미널/콘솔에 출력 가능한 아스키(Unicode Block) QR 문자열 렌더러 */
-  private String renderAsciiQr(String text, int width, int height) {
-    try {
-      BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, width, height);
-      StringBuilder sb = new StringBuilder();
+  @Test
+  @DisplayName("생성된 QR을 다시 디코딩하면 원래 넣은 문자열이 그대로 나온다")
+  void generateQrCodeImage_decodedContentMatchesInput() throws Exception {
+    String content = "R20260912TEST0001";
 
-      for (int y = 0; y < matrix.getHeight(); y++) {
-        for (int x = 0; x < matrix.getWidth(); x++) {
-          sb.append(matrix.get(x, y) ? "██" : "  ");
-        }
-        sb.append("\n");
-      }
-      return sb.toString();
-    } catch (Exception e) {
-      return "QR 렌더링 실패: " + e.getMessage();
-    }
+    log.info("[generateQrCodeImage.decodedContentMatchesInput] input(content={})", content);
+
+    byte[] result = qrService.generateQrCodeImage(content);
+    String decoded = decodeQrCode(result);
+
+    log.info(
+        "[generateQrCodeImage.decodedContentMatchesInput] expected={} actualDecoded={}",
+        content,
+        decoded);
+
+    assertThat(decoded).isEqualTo(content);
+  }
+
+  @Test
+  @DisplayName("예약번호 형식의 실제 값으로도 디코딩 결과가 정확히 일치한다")
+  void generateQrCodeImage_realisticReservationNumber() throws Exception {
+    // book()에서 실제로 만드는 형식: "R" + yyyyMMdd + 8자리 UUID 대문자
+    String reservationNumber = "R2026091212AB34CD";
+
+    log.info(
+        "[generateQrCodeImage.realisticReservationNumber] input(reservationNumber={})",
+        reservationNumber);
+
+    byte[] result = qrService.generateQrCodeImage(reservationNumber);
+    String decoded = decodeQrCode(result);
+
+    log.info(
+        "[generateQrCodeImage.realisticReservationNumber] expected={} actualDecoded={}",
+        reservationNumber,
+        decoded);
+
+    assertThat(decoded).isEqualTo(reservationNumber);
+  }
+
+  @Test
+  @DisplayName("빈 문자열이면 QR_GENERATION_FAILED 예외가 발생한다")
+  void generateQrCodeImage_emptyContent_throwsQrGenerationFailed() {
+    String content = "";
+
+    log.info("[generateQrCodeImage.emptyContent_throwsQrGenerationFailed] input(content=empty)");
+
+    ServiceException exception =
+        assertThrows(ServiceException.class, () -> qrService.generateQrCodeImage(content));
+
+    log.info(
+        "[generateQrCodeImage.emptyContent_throwsQrGenerationFailed] expectedErrorCode={} actualErrorCode={}",
+        QrErrorCode.QR_GENERATION_FAILED,
+        exception.getErrorCode());
+
+    assertThat(exception.getErrorCode()).isEqualTo(QrErrorCode.QR_GENERATION_FAILED);
+  }
+
+  // QrService가 생성한 PNG 바이트 배열을 다시 이미지로 읽고, zxing으로 디코딩해서 원문 문자열을 복원
+  private String decodeQrCode(byte[] pngBytes) throws Exception {
+    BufferedImage image = ImageIO.read(new ByteArrayInputStream(pngBytes));
+    LuminanceSource source = new BufferedImageLuminanceSource(image);
+    BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(source));
+
+    Result result = new MultiFormatReader().decode(bitmap);
+    return result.getText();
   }
 }

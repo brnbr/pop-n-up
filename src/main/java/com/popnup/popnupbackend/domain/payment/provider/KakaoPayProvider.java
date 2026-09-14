@@ -14,6 +14,7 @@ import com.popnup.popnupbackend.domain.popup.entity.Popup;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
+import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ public class KakaoPayProvider {
   private final RestTemplate restTemplate;
   private final ReservationRepository reservationRepository;
   private final PaymentRepository paymentRepository;
+  private final ReservationService reservationService;
 
   // restTempalte == 다른 서버에 http 요청을 보내는 도구, Rest 방식으로 Api를 호출할 수 있는 spring 내장 클래스
 
@@ -150,7 +152,10 @@ public class KakaoPayProvider {
     KakaoPayApproveResponse body = Objects.requireNonNull(response.getBody());
 
     payment.approve();
-    reservation.confirm();
+
+    boolean paymentSucceeded = payment.getStatus() == PaymentStatus.PAID;
+    reservationService.confirmReservation(reservation.getId(), paymentSucceeded);
+
     return body;
   }
 

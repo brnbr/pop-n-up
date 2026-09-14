@@ -20,8 +20,9 @@ public enum ScheduleErrorCode implements ErrorCode {
 
   SCHEDULE_INACTIVE(HttpStatus.CONFLICT, "해당 타임 슬롯은 현재 예약이 불가능합니다."),
   CANNOT_DELETE_RESERVED_SCHEDULE(HttpStatus.CONFLICT, "이미 예약자가 존재하는 스케줄은 삭제할 수 없습니다."),
+  SCHEDULE_ALREADY_STARTED(HttpStatus.CONFLICT, "이미 시작된 타임 슬롯은 예약할 수 없습니다."),
 
-  SCHEDULE_TIME_OVERLAPPED(HttpStatus.CONFLICT, "이미 등록된 스케줄과 시간이 겹칩니다.");
+  SCHEDULE_POPUP_NOT_FOUND(HttpStatus.NOT_FOUND, "예약할 팝업을 찾을 수 없습니다.");
 
   private final HttpStatus httpStatus;
   private final String message;

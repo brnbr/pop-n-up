@@ -19,6 +19,7 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -44,7 +45,7 @@ public class ReservationService {
     Member member =
         memberRepository
             .findById(memberId)
-            .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException); // todo 에러 처리 통일 필요
+            .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
 
     Schedule schedule =
         scheduleRepository
@@ -55,7 +56,7 @@ public class ReservationService {
       throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
     }
 
-    schedule.addReservation(request.getPersonCount());
+    schedule.addReservation(request.getPersonCount(), LocalDateTime.now());
 
     String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
     String timeUUID =
@@ -76,16 +77,15 @@ public class ReservationService {
         savedReservation.getId(), savedReservation.getReservationNumber());
   }
 
-  // todo 결제 성공 시 예약 확정 처리
-  // note QR 코드 생성 및 저장은 추가됨
   // 결제 시 예약 확정
   @Transactional
-  public void confirmReservation(Long reservationId) {
+  public void confirmReservation(Long reservationId, boolean paymentSucceeded) {
     Reservation reservation =
         reservationRepository
-            .findById(reservationId)
+            .findByIdWithPessimisticLock(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
-    reservation.confirm();
+
+    reservation.confirm(paymentSucceeded);
   }
 
   // QR 생성
@@ -112,7 +112,7 @@ public class ReservationService {
   public CheckInResponse checkIn(CheckInRequest request) {
     Reservation reservation =
         reservationRepository
-            .findByReservationNumber(request.getReservationNumber())
+            .findByReservationNumberWithPessimisticLock(request.getReservationNumber())
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
     reservation.checkIn();
@@ -131,7 +131,7 @@ public class ReservationService {
       throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
     }
 
-    reservationCancelManager.cancel(reservation);
+    reservationCancelManager.cancel(reservationId);
   }
 
   // 예약 목록 전체 조회
@@ -175,7 +175,11 @@ public class ReservationService {
     log.info("[expiredPastReservation] 만료 처리 대상 건수: {}건", expiredList.size());
 
     for (Reservation reservation : expiredList) {
-      reservation.expired();
+      try {
+        reservationCancelManager.expire(reservation.getId());
+      } catch (Exception e) {
+        log.error("[expiredPastReservation] 예약 단건 만료 처리 실패 (ID: {})", reservation.getId(), e);
+      }
     }
   }
 }

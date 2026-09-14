@@ -5,6 +5,8 @@ plugins {
     id 'com.diffplug.spotless' version '6.23.3' // Spotless 플러그인
 }
 
+ext['testcontainers.version'] = '2.0.5'
+
 group = 'com'
 version = '0.0.1-SNAPSHOT'
 description = 'popnup'
@@ -61,6 +63,10 @@ dependencies {
     //크롤링
     implementation 'org.jsoup:jsoup:1.18.1'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-mysql'
 }
 
 tasks.named('test') {
@@ -75,7 +81,6 @@ spotless {
         endWithNewline()
     }
 }
-
 
 tasks.named('compileJava') {
     dependsOn 'spotlessApply'
