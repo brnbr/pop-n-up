@@ -2,11 +2,9 @@ package com.popnup.popnupbackend.domain.payment.provider;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayApproveRequest;
-import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayCancelRequest;
 import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayOrderRequest;
 import com.popnup.popnupbackend.domain.payment.dto.request.KakaoPayReadyRequest;
 import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayApproveResponse;
-import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayCancelResponse;
 import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayReadyResponse;
 import com.popnup.popnupbackend.domain.payment.entity.Payment;
 import com.popnup.popnupbackend.domain.payment.enums.PaymentStatus;
@@ -178,9 +176,7 @@ public class KakaoPayProvider {
       reservationService.confirmReservation(reservation.getId(), true);
 
     } catch (Exception e) {
-
-      paymentCompensationService.compensate(payment.getId());
-
+      paymentCompensationService.compensate(paymentId);
       throw e;
     }
 
@@ -194,6 +190,4 @@ public class KakaoPayProvider {
     headers.add("Content-type", "application/json");
     return headers;
   }
-
-
 }

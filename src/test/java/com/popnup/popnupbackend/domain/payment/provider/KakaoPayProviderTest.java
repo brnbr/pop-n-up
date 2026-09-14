@@ -14,6 +14,7 @@ import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayReadyRespons
 import com.popnup.popnupbackend.domain.payment.entity.Payment;
 import com.popnup.popnupbackend.domain.payment.enums.PaymentStatus;
 import com.popnup.popnupbackend.domain.payment.repository.PaymentRepository;
+import com.popnup.popnupbackend.domain.payment.service.PaymentCompensationService;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
@@ -43,6 +44,8 @@ class KakaoPayProviderTest {
   @Mock private PaymentRepository paymentRepository;
 
   @Mock private ReservationService reservationService;
+
+  @Mock private PaymentCompensationService paymentCompensationService;
 
   @Mock private Reservation reservation;
 
@@ -198,7 +201,7 @@ class KakaoPayProviderTest {
   }
 
   @Test
-  @DisplayName("카카오 결제 승인 성공 후 예약 확정에 실패하면 예외가 발생한다")
+  @DisplayName("카카오 결제 승인 성공 후 예약 확정에 실패하면 보상 처리를 요청하고 예외가 발생한다")
   void approveFailsWhenReservationConfirmFails() {
 
     // given
@@ -227,17 +230,16 @@ class KakaoPayProviderTest {
         .isInstanceOf(RuntimeException.class)
         .hasMessage("예약 확정 실패");
 
-    // 외부 카카오 승인 호출은 이미 성공한 상태
+    // 카카오 승인 API는 성공
     verify(restTemplate, times(1))
         .postForEntity(
             eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
             any(HttpEntity.class),
             eq(KakaoPayApproveResponse.class));
 
-    // payment.approve()까지 실행되었기 때문에
-    // 단위 테스트 객체 상태에서는 PAID
-    assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
+    // 예약 확정 실패 후 보상 처리 요청
+    verify(paymentCompensationService, times(1)).compensate(1L);
 
-    verify(reservationService, times(1)).confirmReservation(1L, true);
+    assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
   }
 }

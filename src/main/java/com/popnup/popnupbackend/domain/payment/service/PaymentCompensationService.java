@@ -22,67 +22,63 @@ import org.springframework.web.client.RestTemplate;
 @RequiredArgsConstructor
 public class PaymentCompensationService {
 
-    private final RestTemplate restTemplate;
-    private final PaymentRepository paymentRepository;
+  private final RestTemplate restTemplate;
+  private final PaymentRepository paymentRepository;
 
-    @Value("${kakaopay.secretKey}")
-    private String secretKey;
+  @Value("${kakaopay.secretKey}")
+  private String secretKey;
 
-    @Value("${kakaopay.cid}")
-    private String cid;
+  @Value("${kakaopay.cid}")
+  private String cid;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void compensate(Long paymentId) {
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void compensate(Long paymentId) {
 
-        Payment payment =
-                paymentRepository
-                        .findById(paymentId)
-                        .orElseThrow(PayErrorCode.PAYMENT_NOT_FOUND::toException);
+    Payment payment =
+        paymentRepository
+            .findById(paymentId)
+            .orElseThrow(PayErrorCode.PAYMENT_NOT_FOUND::toException);
 
-        try {
-            cancelKakaoPayment(payment);
+    try {
+      cancelKakaoPayment(payment);
 
-            payment.cancel();
+      payment.cancel();
 
-            log.info("카카오페이 보상 취소 성공 paymentId={}", paymentId);
+      log.info("카카오페이 보상 취소 성공 paymentId={}", paymentId);
 
-        } catch (Exception e) {
+    } catch (Exception e) {
 
-            payment.requireReconciliation();
+      payment.requireReconciliation();
 
-            log.error(
-                    "카카오페이 보상 취소 실패. 수동 복구 필요 paymentId={}",
-                    paymentId,
-                    e);
-        }
+      log.error("카카오페이 보상 취소 실패. 수동 복구 필요 paymentId={}", paymentId, e);
     }
+  }
 
-    private KakaoPayCancelResponse cancelKakaoPayment(Payment payment) {
+  private KakaoPayCancelResponse cancelKakaoPayment(Payment payment) {
 
-        KakaoPayCancelRequest request =
-                KakaoPayCancelRequest.builder()
-                        .cid(cid)
-                        .tid(payment.getTid())
-                        .cancelAmount(payment.getAmount())
-                        .cancelTaxFreeAmount(0)
-                        .build();
+    KakaoPayCancelRequest request =
+        KakaoPayCancelRequest.builder()
+            .cid(cid)
+            .tid(payment.getTid())
+            .cancelAmount(payment.getAmount())
+            .cancelTaxFreeAmount(0)
+            .build();
 
-        HttpEntity<KakaoPayCancelRequest> entity =
-                new HttpEntity<>(request, getHeaders());
+    HttpEntity<KakaoPayCancelRequest> entity = new HttpEntity<>(request, getHeaders());
 
-        ResponseEntity<KakaoPayCancelResponse> response =
-                restTemplate.postForEntity(
-                        "https://open-api.kakaopay.com/online/v1/payment/cancel",
-                        entity,
-                        KakaoPayCancelResponse.class);
+    ResponseEntity<KakaoPayCancelResponse> response =
+        restTemplate.postForEntity(
+            "https://open-api.kakaopay.com/online/v1/payment/cancel",
+            entity,
+            KakaoPayCancelResponse.class);
 
-        return Objects.requireNonNull(response.getBody());
-    }
+    return Objects.requireNonNull(response.getBody());
+  }
 
-    private HttpHeaders getHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("Authorization", "SECRET_KEY " + secretKey);
-        headers.add("Content-type", "application/json");
-        return headers;
-    }
+  private HttpHeaders getHeaders() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.add("Authorization", "SECRET_KEY " + secretKey);
+    headers.add("Content-type", "application/json");
+    return headers;
+  }
 }
