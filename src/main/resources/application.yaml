@@ -9,12 +9,6 @@ spring:
   jpa:
     open-in-view: false
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-
   security:
     oauth2:
       client:
@@ -36,6 +30,12 @@ management:
             token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 
 kakaopay:
   secretKey: ${KAKAOPAY_SECRET_KEY}
