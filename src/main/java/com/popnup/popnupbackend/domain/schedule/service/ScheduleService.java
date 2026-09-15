@@ -24,8 +24,8 @@ public class ScheduleService {
 
   private final ScheduleRepository scheduleRepository;
   private final PopupRepository popupRepository;
+  private final ScheduleCapacityCache scheduleCapacityCache;
 
-  // 사용자 - 특정 팝업의 날짜별 스케줄 목록 조회
   @Transactional(readOnly = true)
   public List<ScheduleResponse> getScheduleByDate(Long popupId, LocalDate date) {
     List<Schedule> schedules = scheduleRepository.findActiveSchedulesByDate(popupId, date);
@@ -34,7 +34,6 @@ public class ScheduleService {
     return schedules.stream().map(schedule -> ScheduleResponse.from(schedule, now)).toList();
   }
 
-  // 스케줄 단 건 등록
   @Transactional
   public Long createSchedule(ScheduleCreateRequest request) {
     Popup popup =
@@ -58,10 +57,13 @@ public class ScheduleService {
             request.getMaxCapacity());
 
     Schedule savedSchedule = scheduleRepository.save(schedule);
+
+    scheduleCapacityCache.init(
+        savedSchedule.getId(), savedSchedule.getScheduleDate(), request.getMaxCapacity());
+
     return savedSchedule.getId();
   }
 
-  // 타임 슬롯 일괄 생성
   @Transactional
   public int createBatchSchedules(ScheduleBatchCreateRequest request) {
     if (!request.getCloseTime().isAfter(request.getOpenTime())) {
@@ -87,11 +89,9 @@ public class ScheduleService {
     List<Schedule> schedules = new ArrayList<>();
     LocalTime currentStartTime = request.getOpenTime();
 
-    // openTime부터 시작해 interval 단위로 슬롯 생성
     while (currentStartTime.isBefore(request.getCloseTime())) {
       LocalTime currentEndTime = currentStartTime.plusMinutes(request.getIntervalMinutes());
 
-      // 다음 종료 시각이 운영 종료 시각을 넘어서거나, 24시 자정을 넘어 시간이 역전되는 경우 중단
       if (currentEndTime.isAfter(request.getCloseTime())
           || currentEndTime.isBefore(currentStartTime)) {
         break;
@@ -106,11 +106,9 @@ public class ScheduleService {
               request.getMaxCapacity());
       schedules.add(schedule);
 
-      // 무한 루프 방지용. 다음 슬롯 생성을 위해 시작 시간을 현재 종료 시간으로 전진
       currentStartTime = currentEndTime;
     }
 
-    // 생성된 슬롯이 진짜 없는지 루프 끝나고 다시 검사
     if (schedules.isEmpty()) {
       throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
     }
@@ -119,7 +117,6 @@ public class ScheduleService {
     return schedules.size();
   }
 
-  // 타임 슬롯 활성화/비활성화
   @Transactional
   public void updateScheduleStatus(Long scheduleId, boolean isActive) {
     Schedule schedule =
@@ -143,7 +140,6 @@ public class ScheduleService {
     scheduleRepository.delete(schedule);
   }
 
-  // 팝업 운영 기간 유효성 검증 공통 메서드
   private void validateScheduleWithinPopupPeriod(Popup popup, LocalDate scheduleDate) {
     if (scheduleDate.isBefore(popup.getStartDate()) || scheduleDate.isAfter(popup.getEndDate())) {
       throw new IllegalArgumentException("스케줄 날짜는 팝업 운영 기간 내여야 합니다.");
