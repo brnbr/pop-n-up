@@ -49,6 +49,13 @@ jobs:
 
       # Step 5: 테스트 실행
       - name: Run tests
+        env:
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          KAKAOPAY_SECRET_KEY: ${{ secrets.KAKAOPAY_SECRET_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          NAVER_MAPS_CLIENT_ID: ${{ secrets.NAVER_MAPS_CLIENT_ID }}
+          NAVER_MAPS_CLIENT_SECRET: ${{ secrets.NAVER_MAPS_CLIENT_SECRET }}
         run: ./gradlew test
 
       # Step 6: JAR 빌드

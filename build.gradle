@@ -29,8 +29,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
-    // AWS Parameter Store
-   // implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store:4.1.1'
+    implementation platform('io.awspring.cloud:spring-cloud-aws-dependencies:4.1.0')
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-parameter-store'
 
     implementation 'io.jsonwebtoken:jjwt-api:0.13.0'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.13.0'
