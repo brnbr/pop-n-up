@@ -13,4 +13,10 @@ public interface ScheduleRepositoryCustom {
       Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime);
 
   Optional<Schedule> findByIdWithPessimisticLock(Long id);
+
+  int tryIncreaseCapacity(Long scheduleId, int count);
+
+  Optional<Schedule> findByIdForValidation(Long id);
+
+  int tryDecreaseCapacity(Long scheduleId, int count);
 }
