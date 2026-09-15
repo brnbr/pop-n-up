@@ -1,19 +1,60 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3307/${MYSQL_DATABASE}
-    username: ${MYSQL_USER}
-    password: ${MYSQL_PASSWORD}
+    url: jdbc:mysql://localhost:3306/popup?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    username: root
+    password: 12345678
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 50
 
   jpa:
     hibernate:
       ddl-auto: update
 
+  h2:
+    console:
+      enabled: true
+
   data:
     redis:
       host: localhost
       port: 6379
+      timeout: 500ms
+      lettuce:
+        pool:
+          max-wait: 500ms
 
 logging:
   level:
-    com.popnup: debug
+    org.hibernate.stat: debug
+
+naver:
+  maps:
+    client-id: ${NAVER_MAPS_CLIENT_ID}
+    client-secret: ${NAVER_MAPS_CLIENT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, prometheus
+  metrics:
+    enable:
+      hikaricp: true
+      tomcat: true
+
+server:
+  tomcat:
+    threads:
+      max: 400
+      min-spare: 20
+    accept-count: 300
+    connection-timeout: 20000
+
+resilience4j:
+  ratelimiter:
+    instances:
+      reservationBooking:
+        limit-for-period: 200000
+        limit-refresh-period: 1s
+        timeout-duration: 0
