@@ -39,7 +39,7 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           NAVER_MAPS_CLIENT_ID: ${{ secrets.NAVER_MAPS_CLIENT_ID }}
           NAVER_MAPS_CLIENT_SECRET: ${{ secrets.NAVER_MAPS_CLIENT_SECRET }}
-        run: ./gradlew test
+        run: ./gradlew test --stacktrace --info
 
       - name: 테스트 리포트 작성
         uses: mikepenz/action-junit-report@v6
