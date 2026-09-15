@@ -10,6 +10,7 @@ import com.popnup.popnupbackend.domain.payment.entity.Payment;
 import com.popnup.popnupbackend.domain.payment.enums.PaymentStatus;
 import com.popnup.popnupbackend.domain.payment.exception.PayErrorCode;
 import com.popnup.popnupbackend.domain.payment.repository.PaymentRepository;
+import com.popnup.popnupbackend.domain.payment.service.PaymentCompensationService;
 import com.popnup.popnupbackend.domain.popup.entity.Popup;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
@@ -40,6 +41,7 @@ public class KakaoPayProvider {
   private final ReservationRepository reservationRepository;
   private final PaymentRepository paymentRepository;
   private final ReservationService reservationService;
+  private final PaymentCompensationService paymentCompensationService;
 
   // restTempalte == 다른 서버에 http 요청을 보내는 도구, Rest 방식으로 Api를 호출할 수 있는 spring 내장 클래스
 
@@ -141,7 +143,6 @@ public class KakaoPayProvider {
             .findById(paymentId)
             .orElseThrow(PayErrorCode.PAYMENT_NOT_FOUND::toException);
 
-    // 이미 결제된 경우 중복 승인 방지
     if (payment.getStatus() == PaymentStatus.PAID) {
       throw PayErrorCode.ALREADY_PAID.toException();
     }
@@ -167,10 +168,17 @@ public class KakaoPayProvider {
 
     KakaoPayApproveResponse body = Objects.requireNonNull(response.getBody());
 
+    // 여기까지 오면 카카오에서는 이미 결제 승인 완료
     payment.approve();
 
-    boolean paymentSucceeded = payment.getStatus() == PaymentStatus.PAID;
-    reservationService.confirmReservation(reservation.getId(), paymentSucceeded);
+    try {
+
+      reservationService.confirmReservation(reservation.getId(), true);
+
+    } catch (Exception e) {
+      paymentCompensationService.compensate(paymentId);
+      throw e;
+    }
 
     return body;
   }

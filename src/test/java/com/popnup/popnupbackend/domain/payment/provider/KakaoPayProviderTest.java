@@ -14,11 +14,13 @@ import com.popnup.popnupbackend.domain.payment.dto.response.KakaoPayReadyRespons
 import com.popnup.popnupbackend.domain.payment.entity.Payment;
 import com.popnup.popnupbackend.domain.payment.enums.PaymentStatus;
 import com.popnup.popnupbackend.domain.payment.repository.PaymentRepository;
+import com.popnup.popnupbackend.domain.payment.service.PaymentCompensationService;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,6 +44,8 @@ class KakaoPayProviderTest {
   @Mock private PaymentRepository paymentRepository;
 
   @Mock private ReservationService reservationService;
+
+  @Mock private PaymentCompensationService paymentCompensationService;
 
   @Mock private Reservation reservation;
 
@@ -194,5 +198,48 @@ class KakaoPayProviderTest {
         .postForEntity(any(String.class), any(HttpEntity.class), eq(KakaoPayReadyResponse.class));
 
     SecurityContextHolder.clearContext();
+  }
+
+  @Test
+  @DisplayName("카카오 결제 승인 성공 후 예약 확정에 실패하면 보상 처리를 요청하고 예외가 발생한다")
+  void approveFailsWhenReservationConfirmFails() {
+
+    // given
+    when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+
+    when(reservation.getReservationNumber()).thenReturn("R20260914TEST");
+
+    when(reservation.getMember()).thenReturn(member);
+
+    when(reservation.getId()).thenReturn(1L);
+
+    when(member.getId()).thenReturn(1L);
+
+    KakaoPayApproveResponse kakaoResponse = new KakaoPayApproveResponse();
+
+    when(restTemplate.postForEntity(
+            eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
+            any(HttpEntity.class),
+            eq(KakaoPayApproveResponse.class)))
+        .thenReturn(ResponseEntity.ok(kakaoResponse));
+
+    doThrow(new RuntimeException("예약 확정 실패")).when(reservationService).confirmReservation(1L, true);
+
+    // when & then
+    assertThatThrownBy(() -> kakaoPayProvider.approve(1L, "pg-token"))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessage("예약 확정 실패");
+
+    // 카카오 승인 API는 성공
+    verify(restTemplate, times(1))
+        .postForEntity(
+            eq("https://open-api.kakaopay.com/online/v1/payment/approve"),
+            any(HttpEntity.class),
+            eq(KakaoPayApproveResponse.class));
+
+    // 예약 확정 실패 후 보상 처리 요청
+    verify(paymentCompensationService, times(1)).compensate(1L);
+
+    assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
   }
 }
