@@ -1,20 +1,16 @@
 package com.popnup.popnupbackend.domain.reservation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
-import com.popnup.popnupbackend.domain.popup.entity.Popup;
-import com.popnup.popnupbackend.domain.popup.entity.PopupCategory;
-import com.popnup.popnupbackend.domain.popup.entity.PopupStatus;
 import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
 import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
 import com.popnup.popnupbackend.domain.qrcode.service.QrService;
@@ -29,581 +25,483 @@ import com.popnup.popnupbackend.domain.reservation.repository.ReservationReposit
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
 import com.popnup.popnupbackend.global.error.ServiceException;
 import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-@Slf4j
 @ExtendWith(MockitoExtension.class)
 class ReservationServiceTest {
+
+  @InjectMocks private ReservationService reservationService;
 
   @Mock private ReservationRepository reservationRepository;
   @Mock private ScheduleRepository scheduleRepository;
   @Mock private MemberRepository memberRepository;
   @Mock private QrService qrService;
   @Mock private ReservationCancelManager reservationCancelManager;
-
-  @InjectMocks private ReservationService reservationService;
-
-  private Member member;
-  private Schedule schedule;
-  private Reservation reservation;
-
-  @BeforeEach
-  void setUp() {
-    member = createMemberWithId(1L);
-    Popup popup = createPopup(PopupStatus.OPEN);
-    schedule =
-        Schedule.createSchedule(
-            popup, LocalDate.now().plusDays(1), LocalTime.of(10, 0), LocalTime.of(11, 0), 10);
-    ReflectionTestUtils.setField(schedule, "id", 100L);
-
-    reservation = Reservation.createReservation("R20260912TEST0001", member, schedule, 2);
-    ReflectionTestUtils.setField(reservation, "id", 10L);
-  }
-
-  private Member createMemberWithId(Long id) {
-    Member m = Member.createLocal("test@test.com", "password", "테스터");
-    ReflectionTestUtils.setField(m, "id", id);
-    return m;
-  }
-
-  private Popup createPopup(PopupStatus status) {
-    return Popup.builder()
-        .title("테스트 팝업")
-        .category(PopupCategory.ETC)
-        .region("서울")
-        .address("서울시 강남구")
-        .startDate(LocalDate.now().minusDays(10))
-        .endDate(LocalDate.now().plusDays(10))
-        .isFree(true)
-        .price(0)
-        .status(status)
-        .build();
-  }
-
-  // ReservationCreateRequest는 생성자/빌더가 없는 @Getter 전용 DTO라 Mockito.mock()으로 stub
-  private ReservationCreateRequest mockCreateRequest(Long scheduleId, int personCount) {
-    ReservationCreateRequest request = Mockito.mock(ReservationCreateRequest.class);
-    given(request.getScheduleId()).willReturn(scheduleId);
-    given(request.getPersonCount()).willReturn(personCount);
-    return request;
-  }
+  @Mock private ScheduleCapacityCache scheduleCapacityCache;
 
   @Nested
-  @DisplayName("book 검증")
-  class Book {
+  @DisplayName("조건부 업데이트 기반 예약 생성 [bookWithConditionalUpdate]")
+  class BookWithConditionalUpdateTest {
 
     @Test
-    @DisplayName("정상 예약 생성")
-    void success() {
-      ReservationCreateRequest request = mockCreateRequest(100L, 2);
+    @DisplayName("성공: 모든 검증 및 정원 증가 성공 시 예약이 생성되고 응답을 반환한다")
+    void bookWithConditionalUpdate_success() {
+      // given
+      Long memberId = 1L;
+      Long scheduleId = 10L;
+      int personCount = 2;
 
-      given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-      given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.of(schedule));
-      given(reservationRepository.hasActiveReservation(100L, 1L)).willReturn(false);
-      given(reservationRepository.save(any(Reservation.class)))
-          .willAnswer(invocation -> invocation.getArgument(0));
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      ReflectionTestUtils.setField(request, "scheduleId", scheduleId);
+      ReflectionTestUtils.setField(request, "personCount", personCount);
 
-      log.info("[book.success] input(memberId=1, scheduleId=100, personCount=2)");
+      Member member = mock(Member.class);
+      Schedule schedule = mock(Schedule.class);
+      Reservation reservation = mock(Reservation.class);
 
-      ReservationCreateResponse response = reservationService.book(1L, request);
+      given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
+      given(reservationRepository.hasActiveReservation(scheduleId, memberId)).willReturn(false);
+      given(scheduleCapacityCache.tryReserve(scheduleId, personCount)).willReturn(true);
+      given(scheduleRepository.findByIdForValidation(scheduleId)).willReturn(Optional.of(schedule));
+      given(scheduleRepository.tryIncreaseCapacity(scheduleId, personCount)).willReturn(1);
+      given(reservationRepository.save(any(Reservation.class))).willReturn(reservation);
+      given(reservation.getId()).willReturn(100L);
+      given(reservation.getReservationNumber()).willReturn("R20260915TEST");
 
-      log.info(
-          "[book.success] expectedNumberPrefix=R actualReservationNumber={} scheduleNowCapacity={}",
-          response.getReservationNumber(),
-          schedule.getNowCapacity());
+      // when
+      ReservationCreateResponse response =
+          reservationService.bookWithConditionalUpdate(memberId, request);
 
-      assertThat(response.getReservationNumber()).startsWith("R");
-      assertThat(schedule.getNowCapacity()).isEqualTo(2);
-      verify(reservationRepository, times(1)).save(any(Reservation.class));
+      // then
+      assertThat(response.getReservationId()).isEqualTo(100L);
+      assertThat(response.getReservationNumber()).isEqualTo("R20260915TEST");
+
+      verify(schedule).validateBookable(any(LocalDateTime.class));
+      verify(reservationRepository).save(any(Reservation.class));
+      verify(scheduleCapacityCache, never()).compensate(anyLong(), anyInt());
     }
 
     @Test
-    @DisplayName("회원이 존재하지 않으면 예외 발생")
-    void memberNotFound() {
-      ReservationCreateRequest request = Mockito.mock(ReservationCreateRequest.class);
-      given(memberRepository.findById(1L)).willReturn(Optional.empty());
+    @DisplayName("실패: 회원이 존재하지 않으면 MEMBER_NOT_FOUND 예외가 발생한다")
+    void bookWithConditionalUpdate_memberNotFound() {
+      // given
+      Long memberId = 1L;
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      given(memberRepository.findById(memberId)).willReturn(Optional.empty());
 
-      log.info("[book.memberNotFound] input(memberId=1)");
+      // when & then
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(memberId, request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND));
 
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.book(1L, request));
-
-      log.info(
-          "[book.memberNotFound] expectedErrorCode={} actualErrorCode={}",
-          MemberErrorCode.MEMBER_NOT_FOUND,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode()).isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND);
+      verify(scheduleCapacityCache, never()).tryReserve(anyLong(), anyInt());
     }
 
     @Test
-    @DisplayName("스케줄이 존재하지 않으면 예외 발생")
-    void scheduleNotFound() {
-      ReservationCreateRequest request = Mockito.mock(ReservationCreateRequest.class);
-      given(request.getScheduleId()).willReturn(100L);
-      given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-      given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.empty());
+    @DisplayName("실패: 이미 활성 예약이 존재하면 DUPLICATE_USER_RESERVATION 예외가 발생한다")
+    void bookWithConditionalUpdate_duplicateReservation() {
+      // given
+      Long memberId = 1L;
+      Long scheduleId = 10L;
 
-      log.info("[book.scheduleNotFound] input(memberId=1, scheduleId=100)");
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      ReflectionTestUtils.setField(request, "scheduleId", scheduleId);
+      ReflectionTestUtils.setField(request, "personCount", 2);
 
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.book(1L, request));
+      Member member = mock(Member.class);
+      given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
+      given(reservationRepository.hasActiveReservation(scheduleId, memberId)).willReturn(true);
 
-      log.info(
-          "[book.scheduleNotFound] expectedErrorCode={} actualErrorCode={}",
-          ScheduleErrorCode.SCHEDULE_NOT_FOUND,
-          exception.getErrorCode());
+      // when & then
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(memberId, request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ReservationErrorCode.DUPLICATE_USER_RESERVATION));
 
-      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.SCHEDULE_NOT_FOUND);
+      verify(scheduleCapacityCache, never()).tryReserve(anyLong(), anyInt());
     }
 
     @Test
-    @DisplayName("이미 활성 예약이 있으면 예외 발생")
-    void duplicateReservation() {
-      ReservationCreateRequest request = Mockito.mock(ReservationCreateRequest.class);
-      given(request.getScheduleId()).willReturn(100L);
-      given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-      given(scheduleRepository.findByIdWithPessimisticLock(100L)).willReturn(Optional.of(schedule));
-      given(reservationRepository.hasActiveReservation(100L, 1L)).willReturn(true);
+    @DisplayName("실패: Redis 캐시 차단 시 SCHEDULE_CAPACITY_EXCEEDED 예외가 발생하며 보상 트랜잭션은 호출되지 않는다")
+    void bookWithConditionalUpdate_redisCacheExceeded() {
+      // given
+      Long memberId = 1L;
+      Long scheduleId = 10L;
+      int personCount = 2;
 
-      log.info("[book.duplicateReservation] input(memberId=1, scheduleId=100)");
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      ReflectionTestUtils.setField(request, "scheduleId", scheduleId);
+      ReflectionTestUtils.setField(request, "personCount", personCount);
 
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.book(1L, request));
+      Member member = mock(Member.class);
+      given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
+      given(reservationRepository.hasActiveReservation(scheduleId, memberId)).willReturn(false);
+      given(scheduleCapacityCache.tryReserve(scheduleId, personCount)).willReturn(false);
 
-      log.info(
-          "[book.duplicateReservation] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.DUPLICATE_USER_RESERVATION,
-          exception.getErrorCode());
+      // when & then
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(memberId, request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED));
 
-      assertThat(exception.getErrorCode())
-          .isEqualTo(ReservationErrorCode.DUPLICATE_USER_RESERVATION);
+      verify(scheduleCapacityCache, never()).compensate(anyLong(), anyInt());
     }
 
     @Test
-    @DisplayName("Popup이 OPEN 상태가 아니면 예외 발생 (addReservation 내부 검증 전파 확인)")
-    void popupNotOpen() {
-      Popup closedPopup = createPopup(PopupStatus.CLOSED);
-      Schedule closedSchedule =
-          Schedule.createSchedule(
-              closedPopup,
-              LocalDate.now().plusDays(1),
-              LocalTime.of(10, 0),
-              LocalTime.of(11, 0),
-              10);
-      ReflectionTestUtils.setField(closedSchedule, "id", 101L);
+    @DisplayName("실패: DB 정원 증가 실패 시 SCHEDULE_CAPACITY_EXCEEDED 예외가 발생하고 Redis 보상 메서드가 호출된다")
+    void bookWithConditionalUpdate_dbCapacityExceeded_triggersCompensate() {
+      // given
+      Long memberId = 1L;
+      Long scheduleId = 10L;
+      int personCount = 2;
 
-      ReservationCreateRequest request = mockCreateRequest(101L, 2);
-      given(memberRepository.findById(1L)).willReturn(Optional.of(member));
-      given(scheduleRepository.findByIdWithPessimisticLock(101L))
-          .willReturn(Optional.of(closedSchedule));
-      given(reservationRepository.hasActiveReservation(101L, 1L)).willReturn(false);
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      ReflectionTestUtils.setField(request, "scheduleId", scheduleId);
+      ReflectionTestUtils.setField(request, "personCount", personCount);
 
-      log.info("[book.popupNotOpen] input(memberId=1, scheduleId=101, popupStatus=CLOSED)");
+      Member member = mock(Member.class);
+      Schedule schedule = mock(Schedule.class);
 
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.book(1L, request));
+      given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
+      given(reservationRepository.hasActiveReservation(scheduleId, memberId)).willReturn(false);
+      given(scheduleCapacityCache.tryReserve(scheduleId, personCount)).willReturn(true);
+      given(scheduleRepository.findByIdForValidation(scheduleId)).willReturn(Optional.of(schedule));
+      given(scheduleRepository.tryIncreaseCapacity(scheduleId, personCount)).willReturn(0);
 
-      log.info(
-          "[book.popupNotOpen] expectedErrorCode={} actualErrorCode={}",
-          ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND,
-          exception.getErrorCode());
+      // when & then
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(memberId, request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED));
 
-      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND);
+      verify(scheduleCapacityCache).compensate(scheduleId, personCount);
+      verify(reservationRepository, never()).save(any(Reservation.class));
     }
   }
 
   @Nested
-  @DisplayName("confirmReservation 검증")
-  class ConfirmReservation {
+  @DisplayName("예약 확정 [confirmReservation]")
+  class ConfirmReservationTest {
 
     @Test
-    @DisplayName("정상 확정 처리")
-    void success() {
-      given(reservationRepository.findByIdWithPessimisticLock(10L))
+    @DisplayName("성공: 비관적 락으로 조회된 예약에 결제 성공 여부를 전달하여 confirm을 호출한다")
+    void confirmReservation_success() {
+      // given
+      Long reservationId = 100L;
+      Reservation reservation = mock(Reservation.class);
+      given(reservationRepository.findByIdWithPessimisticLock(reservationId))
           .willReturn(Optional.of(reservation));
 
-      log.info("[confirmReservation.success] input(reservationId=10, paymentSucceeded=true)");
+      // when
+      reservationService.confirmReservation(reservationId, true);
 
-      reservationService.confirmReservation(10L, true);
-
-      log.info(
-          "[confirmReservation.success] expectedStatus=CONFIRMED actualStatus={}",
-          reservation.getStatus());
-
-      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
+      // then
+      verify(reservation).confirm(true);
     }
 
     @Test
-    @DisplayName("결제 실패면 PAYMENT_NOT_COMPLETED 예외 발생")
-    void paymentFailed() {
-      given(reservationRepository.findByIdWithPessimisticLock(10L))
-          .willReturn(Optional.of(reservation));
-
-      log.info(
-          "[confirmReservation.paymentFailed] input(reservationId=10, paymentSucceeded=false)");
-
-      ServiceException exception =
-          assertThrows(
-              ServiceException.class, () -> reservationService.confirmReservation(10L, false));
-
-      log.info(
-          "[confirmReservation.paymentFailed] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.PAYMENT_NOT_COMPLETED,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode()).isEqualTo(ReservationErrorCode.PAYMENT_NOT_COMPLETED);
-    }
-
-    @Test
-    @DisplayName("예약이 존재하지 않으면 예외 발생")
-    void notFound() {
-      given(reservationRepository.findByIdWithPessimisticLock(999L)).willReturn(Optional.empty());
-
-      log.info("[confirmReservation.notFound] input(reservationId=999)");
-
-      ServiceException exception =
-          assertThrows(
-              ServiceException.class, () -> reservationService.confirmReservation(999L, true));
-
-      log.info(
-          "[confirmReservation.notFound] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.RESERVATION_NOT_FOUND,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode()).isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND);
-    }
-  }
-
-  @Nested
-  @DisplayName("getReservationQrCode 검증")
-  class GetReservationQrCode {
-
-    @Test
-    @DisplayName("CONFIRMED 상태의 본인 예약이면 QR 이미지를 반환한다")
-    void success() {
-      reservation.confirm(true);
-      given(reservationRepository.findById(10L)).willReturn(Optional.of(reservation));
-      byte[] fakeImage = new byte[] {1, 2, 3};
-      given(qrService.generateQrCodeImage("R20260912TEST0001")).willReturn(fakeImage);
-
-      log.info("[getReservationQrCode.success] input(memberId=1, reservationId=10)");
-
-      byte[] result = reservationService.getReservationQrCode(1L, 10L);
-
-      log.info("[getReservationQrCode.success] expectedLength=3 actualLength={}", result.length);
-
-      assertThat(result).isEqualTo(fakeImage);
-    }
-
-    @Test
-    @DisplayName("본인 예약이 아니면 예외 발생")
-    void notOwned() {
-      given(reservationRepository.findById(10L)).willReturn(Optional.of(reservation));
-
-      log.info("[getReservationQrCode.notOwned] input(memberId=999, reservationId=10)");
-
-      ServiceException exception =
-          assertThrows(
-              ServiceException.class, () -> reservationService.getReservationQrCode(999L, 10L));
-
-      log.info(
-          "[getReservationQrCode.notOwned] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode())
-          .isEqualTo(ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS);
-    }
-
-    @Test
-    @DisplayName("CONFIRMED 상태가 아니면 예외 발생")
-    void invalidStatus() {
-      given(reservationRepository.findById(10L)).willReturn(Optional.of(reservation)); // PENDING
-
-      log.info(
-          "[getReservationQrCode.invalidStatus] input(memberId=1, reservationId=10, status=PENDING)");
-
-      ServiceException exception =
-          assertThrows(
-              ServiceException.class, () -> reservationService.getReservationQrCode(1L, 10L));
-
-      log.info(
-          "[getReservationQrCode.invalidStatus] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.INVALID_RESERVATION_STATUS,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode())
-          .isEqualTo(ReservationErrorCode.INVALID_RESERVATION_STATUS);
-    }
-  }
-
-  @Nested
-  @DisplayName("checkIn 검증")
-  class CheckIn {
-
-    @Test
-    @DisplayName("정상 체크인 처리")
-    void success() {
-      reservation.confirm(true);
-      // CheckInRequest는 테스트용 생성자가 있으므로 실제 객체 사용
-      CheckInRequest request = new CheckInRequest("R20260912TEST0001");
-      given(reservationRepository.findByReservationNumberWithPessimisticLock("R20260912TEST0001"))
-          .willReturn(Optional.of(reservation));
-
-      log.info("[checkIn.success] input(reservationNumber=R20260912TEST0001)");
-
-      CheckInResponse response = reservationService.checkIn(request);
-
-      log.info(
-          "[checkIn.success] expectedStatus=USED actualStatus={} responseReservationId={}",
-          reservation.getStatus(),
-          response.getReservationId());
-
-      assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.USED);
-    }
-
-    @Test
-    @DisplayName("예약번호에 해당하는 예약이 없으면 예외 발생")
-    void notFound() {
-      CheckInRequest request = new CheckInRequest("NOT_EXIST");
-      given(reservationRepository.findByReservationNumberWithPessimisticLock("NOT_EXIST"))
+    @DisplayName("실패: 예약이 없으면 RESERVATION_NOT_FOUND 예외가 발생한다")
+    void confirmReservation_notFound() {
+      // given
+      Long reservationId = 100L;
+      given(reservationRepository.findByIdWithPessimisticLock(reservationId))
           .willReturn(Optional.empty());
 
-      log.info("[checkIn.notFound] input(reservationNumber=NOT_EXIST)");
-
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.checkIn(request));
-
-      log.info(
-          "[checkIn.notFound] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.RESERVATION_NOT_FOUND,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode()).isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND);
+      // when & then
+      assertThatThrownBy(() -> reservationService.confirmReservation(reservationId, false))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND));
     }
   }
 
   @Nested
-  @DisplayName("cancel 검증")
-  class Cancel {
+  @DisplayName("동적 QR 코드 조회 [getReservationQrCode]")
+  class GetReservationQrCodeTest {
 
     @Test
-    @DisplayName("본인 예약이면 cancelManager에 위임한다")
-    void success() {
-      given(reservationRepository.findById(10L)).willReturn(Optional.of(reservation));
+    @DisplayName("성공: 본인의 CONFIRMED 예약인 경우 QR 바이트 배열을 반환한다")
+    void getReservationQrCode_success() {
+      // given
+      Long memberId = 1L;
+      Long reservationId = 100L;
+      String reservationNumber = "R20260915TEST";
+      byte[] qrBytes = new byte[] {0x1, 0x2};
 
-      log.info("[cancel.success] input(memberId=1, reservationId=10)");
+      Reservation reservation = mock(Reservation.class);
+      given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
+      given(reservation.isOwnedBy(memberId)).willReturn(true);
+      given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
+      given(reservation.getReservationNumber()).willReturn(reservationNumber);
+      given(qrService.generateQrCodeImage(reservationNumber)).willReturn(qrBytes);
 
-      reservationService.cancel(1L, 10L);
+      // when
+      byte[] result = reservationService.getReservationQrCode(memberId, reservationId);
 
-      log.info("[cancel.success] verify reservationCancelManager.cancel(10L) called");
-
-      verify(reservationCancelManager, times(1)).cancel(10L);
+      // then
+      assertThat(result).isEqualTo(qrBytes);
+      verify(qrService).generateQrCodeImage(reservationNumber);
     }
 
     @Test
-    @DisplayName("본인 예약이 아니면 예외 발생, cancelManager는 호출되지 않는다")
-    void notOwned() {
-      given(reservationRepository.findById(10L)).willReturn(Optional.of(reservation));
+    @DisplayName("실패: 본인의 예약이 아니면 UNAUTHORIZED_RESERVATION_ACCESS 예외가 발생한다")
+    void getReservationQrCode_unauthorized() {
+      // given
+      Long loginMemberId = 1L;
+      Long reservationId = 100L;
 
-      log.info("[cancel.notOwned] input(memberId=999, reservationId=10)");
+      Reservation reservation = mock(Reservation.class);
+      given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
+      given(reservation.isOwnedBy(loginMemberId)).willReturn(false);
 
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.cancel(999L, 10L));
-
-      log.info(
-          "[cancel.notOwned] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode())
-          .isEqualTo(ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS);
-      verify(reservationCancelManager, never()).cancel(anyLong());
+      // when & then
+      assertThatThrownBy(
+              () -> reservationService.getReservationQrCode(loginMemberId, reservationId))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS));
     }
 
     @Test
-    @DisplayName("예약이 존재하지 않으면 예외 발생")
-    void notFound() {
-      given(reservationRepository.findById(999L)).willReturn(Optional.empty());
+    @DisplayName("실패: 예약 상태가 CONFIRMED가 아니면 INVALID_RESERVATION_STATUS 예외가 발생한다")
+    void getReservationQrCode_invalidStatus() {
+      // given
+      Long memberId = 1L;
+      Long reservationId = 100L;
 
-      log.info("[cancel.notFound] input(memberId=1, reservationId=999)");
+      Reservation reservation = mock(Reservation.class);
+      given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
+      given(reservation.isOwnedBy(memberId)).willReturn(true);
+      given(reservation.getStatus()).willReturn(ReservationStatus.PENDING);
 
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.cancel(1L, 999L));
-
-      log.info(
-          "[cancel.notFound] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.RESERVATION_NOT_FOUND,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode()).isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND);
-    }
-  }
-
-  @Nested
-  @DisplayName("expirePastReservation 검증")
-  class ExpirePastReservation {
-
-    @Test
-    @DisplayName("만료 대상이 없으면 아무 처리도 하지 않는다")
-    void empty() {
-      given(reservationRepository.findExpiredReservations(any(), any())).willReturn(List.of());
-
-      log.info("[expirePastReservation.empty] input(expiredCount=0)");
-
-      reservationService.expirePastReservation();
-
-      log.info("[expirePastReservation.empty] verify reservationCancelManager.expire never called");
-
-      verify(reservationCancelManager, never()).expireNoShow(anyLong());
-    }
-
-    @Test
-    @DisplayName("만료 대상이 있으면 각 건에 대해 cancelManager.expire를 호출한다")
-    void withTargets() {
-      Reservation another = Reservation.createReservation("R2", member, schedule, 1);
-      ReflectionTestUtils.setField(another, "id", 11L);
-      given(reservationRepository.findExpiredReservations(any(), any()))
-          .willReturn(List.of(reservation, another));
-
-      log.info("[expirePastReservation.withTargets] input(expiredCount=2)");
-
-      reservationService.expirePastReservation();
-
-      log.info("[expirePastReservation.withTargets] verify expire called for id=10 and id=11");
-
-      verify(reservationCancelManager, times(1)).expireNoShow(10L);
-      verify(reservationCancelManager, times(1)).expireNoShow(11L);
+      // when & then
+      assertThatThrownBy(() -> reservationService.getReservationQrCode(memberId, reservationId))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ReservationErrorCode.INVALID_RESERVATION_STATUS));
     }
   }
 
   @Nested
-  @DisplayName("allReservations 검증")
-  class AllReservations {
+  @DisplayName("체크인 [checkIn]")
+  class CheckInTest {
 
     @Test
-    @DisplayName("본인 예약 목록을 ReservationResponse로 변환해 반환한다")
-    void success() {
-      given(reservationRepository.getAllReservation(1L)).willReturn(List.of(reservation));
+    @DisplayName("성공: 비관적 락으로 조회된 예약에 checkIn을 호출하고 응답 DTO를 반환한다")
+    void checkIn_success() {
+      // given
+      String reservationNumber = "R20260915TEST";
+      CheckInRequest request = new CheckInRequest(reservationNumber);
 
-      log.info("[allReservations.success] input(memberId=1)");
+      Member member = mock(Member.class);
+      given(member.getName()).willReturn("홍길동");
 
-      List<ReservationResponse> result = reservationService.allReservations(1L);
+      Reservation reservation = mock(Reservation.class);
+      given(reservation.getId()).willReturn(100L);
+      given(reservation.getReservationNumber()).willReturn(reservationNumber);
+      given(reservation.getMember()).willReturn(member);
+      given(reservation.getPersonCount()).willReturn(2);
 
-      log.info("[allReservations.success] expectedSize=1 actualSize={}", result.size());
-
-      assertThat(result).hasSize(1);
-      assertThat(result.get(0).getReservationNumber()).isEqualTo("R20260912TEST0001");
-    }
-
-    @Test
-    @DisplayName("예약이 없으면 빈 리스트를 반환한다")
-    void empty() {
-      given(reservationRepository.getAllReservation(1L)).willReturn(List.of());
-
-      log.info("[allReservations.empty] input(memberId=1)");
-
-      List<ReservationResponse> result = reservationService.allReservations(1L);
-
-      log.info("[allReservations.empty] expectedSize=0 actualSize={}", result.size());
-
-      assertThat(result).isEmpty();
-    }
-  }
-
-  @Nested
-  @DisplayName("oneReservation 검증")
-  class OneReservation {
-
-    @Test
-    @DisplayName("본인 예약이면 ReservationResponse를 반환한다")
-    void success() {
-      given(reservationRepository.findByIdAndMemberId(10L, 1L))
+      given(reservationRepository.findByReservationNumberWithPessimisticLock(reservationNumber))
           .willReturn(Optional.of(reservation));
 
-      log.info("[oneReservation.success] input(memberId=1, reservationId=10)");
+      // when
+      CheckInResponse response = reservationService.checkIn(request);
 
-      ReservationResponse result = reservationService.oneReservation(1L, 10L);
-
-      log.info(
-          "[oneReservation.success] expectedReservationId=10 actualReservationId={}",
-          result.getReservationId());
-
-      assertThat(result.getReservationId()).isEqualTo(10L);
-    }
-
-    @Test
-    @DisplayName("본인 소유가 아니거나 존재하지 않으면 예외 발생")
-    void notFound() {
-      given(reservationRepository.findByIdAndMemberId(10L, 999L)).willReturn(Optional.empty());
-
-      log.info("[oneReservation.notFound] input(memberId=999, reservationId=10)");
-
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> reservationService.oneReservation(999L, 10L));
-
-      log.info(
-          "[oneReservation.notFound] expectedErrorCode={} actualErrorCode={}",
-          ReservationErrorCode.RESERVATION_NOT_FOUND,
-          exception.getErrorCode());
-
-      assertThat(exception.getErrorCode()).isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND);
+      // then
+      verify(reservation).checkIn();
+      assertThat(response.getReservationId()).isEqualTo(100L);
+      assertThat(response.getReservationNumber()).isEqualTo(reservationNumber);
+      assertThat(response.getMemberName()).isEqualTo("홍길동");
+      assertThat(response.getPersonCount()).isEqualTo(2);
     }
   }
 
   @Nested
-  @DisplayName("getAdminReservations 검증")
-  class GetAdminReservations {
+  @DisplayName("예약 취소 [cancel]")
+  class CancelTest {
 
     @Test
-    @DisplayName("조건에 맞는 예약 목록을 AdminReservationResponse로 변환해 반환한다")
-    void success() {
-      given(
-              reservationRepository.findAdminReservations(
-                  1L, LocalDate.of(2026, 9, 20), ReservationStatus.CONFIRMED))
-          .willReturn(List.of(reservation));
+    @DisplayName("성공: 본인 예약인 경우 ReservationCancelManager에게 취소 처리를 위임한다")
+    void cancel_success() {
+      // given
+      Long memberId = 1L;
+      Long reservationId = 100L;
 
-      log.info(
-          "[getAdminReservations.success] input(popupId=1, date=2026-09-20, status=CONFIRMED)");
+      Reservation reservation = mock(Reservation.class);
+      given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
+      given(reservation.isOwnedBy(memberId)).willReturn(true);
 
-      List<AdminReservationResponse> result =
-          reservationService.getAdminReservations(
-              1L, LocalDate.of(2026, 9, 20), ReservationStatus.CONFIRMED);
+      // when
+      reservationService.cancel(memberId, reservationId);
 
-      log.info("[getAdminReservations.success] expectedSize=1 actualSize={}", result.size());
-
-      assertThat(result).hasSize(1);
+      // then
+      verify(reservationCancelManager).cancel(reservationId);
     }
 
     @Test
-    @DisplayName("필터 조건이 모두 null이어도 정상 동작한다")
-    void nullFilters() {
-      given(reservationRepository.findAdminReservations(null, null, null)).willReturn(List.of());
+    @DisplayName("실패: 본인 예약이 아니면 UNAUTHORIZED_RESERVATION_ACCESS 예외가 발생한다")
+    void cancel_unauthorized() {
+      // given
+      Long loginMemberId = 1L;
+      Long reservationId = 100L;
 
-      log.info("[getAdminReservations.nullFilters] input(popupId=null, date=null, status=null)");
+      Reservation reservation = mock(Reservation.class);
+      given(reservationRepository.findById(reservationId)).willReturn(Optional.of(reservation));
+      given(reservation.isOwnedBy(loginMemberId)).willReturn(false);
 
-      List<AdminReservationResponse> result =
-          reservationService.getAdminReservations(null, null, null);
+      // when & then
+      assertThatThrownBy(() -> reservationService.cancel(loginMemberId, reservationId))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS));
 
-      log.info("[getAdminReservations.nullFilters] expectedSize=0 actualSize={}", result.size());
+      verify(reservationCancelManager, never()).cancel(anyLong());
+    }
+  }
 
-      assertThat(result).isEmpty();
+  @Nested
+  @DisplayName("예약 목록 및 단건 조회")
+  class QueryTest {
+
+    @Test
+    @DisplayName("성공: 회원의 예약 목록 전체를 정상 조회한다")
+    void allReservations_success() {
+      // given
+      Long memberId = 1L;
+      Reservation reservation = mock(Reservation.class);
+      given(reservation.getId()).willReturn(10L);
+      given(reservation.getReservationNumber()).willReturn("R20260915TEST");
+      given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
+      given(reservation.getPersonCount()).willReturn(2);
+
+      given(reservationRepository.getAllReservation(memberId)).willReturn(List.of(reservation));
+
+      // when
+      List<ReservationResponse> results = reservationService.allReservations(memberId);
+
+      // then
+      assertThat(results).hasSize(1);
+      assertThat(results.get(0).getReservationId()).isEqualTo(10L);
+    }
+
+    @Test
+    @DisplayName("성공: 예약 ID와 회원 ID로 단건 예약을 정상 조회한다")
+    void oneReservation_success() {
+      // given
+      Long memberId = 1L;
+      Long reservationId = 100L;
+
+      Reservation reservation = mock(Reservation.class);
+      given(reservation.getId()).willReturn(reservationId);
+      given(reservation.getReservationNumber()).willReturn("R20260915TEST");
+      given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
+      given(reservation.getPersonCount()).willReturn(2);
+
+      given(reservationRepository.findByIdAndMemberId(reservationId, memberId))
+          .willReturn(Optional.of(reservation));
+
+      // when
+      ReservationResponse response = reservationService.oneReservation(memberId, reservationId);
+
+      // then
+      assertThat(response.getReservationId()).isEqualTo(reservationId);
+      verify(reservationRepository).findByIdAndMemberId(reservationId, memberId);
+    }
+
+    @Test
+    @DisplayName("실패: 단건 조회 시 내역이 없으면 RESERVATION_NOT_FOUND 예외가 발생한다")
+    void oneReservation_notFound() {
+      // given
+      Long memberId = 1L;
+      Long reservationId = 100L;
+
+      given(reservationRepository.findByIdAndMemberId(reservationId, memberId))
+          .willReturn(Optional.empty());
+
+      // when & then
+      assertThatThrownBy(() -> reservationService.oneReservation(memberId, reservationId))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ReservationErrorCode.RESERVATION_NOT_FOUND));
+    }
+  }
+
+  @Nested
+  @DisplayName("관리자 예약 목록 조회 [getAdminReservations]")
+  class GetAdminReservationsTest {
+
+    @Test
+    @DisplayName("성공: 조건에 맞는 관리자용 예약 목록을 반환한다")
+    void getAdminReservations_success() {
+      // given
+      Long popupId = 1L;
+      LocalDate scheduleDate = LocalDate.of(2026, 9, 15);
+      ReservationStatus status = ReservationStatus.CONFIRMED;
+
+      Reservation reservation = mock(Reservation.class);
+      Schedule schedule = mock(Schedule.class);
+      Member member = mock(Member.class);
+
+      given(reservation.getId()).willReturn(100L);
+      given(reservation.getReservationNumber()).willReturn("R20260915ADMIN");
+      given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
+      given(reservation.getPersonCount()).willReturn(2);
+      given(reservation.getSchedule()).willReturn(schedule);
+      given(reservation.getMember()).willReturn(member);
+
+      given(schedule.getPopup())
+          .willReturn(mock(com.popnup.popnupbackend.domain.popup.entity.Popup.class));
+      given(schedule.getScheduleDate()).willReturn(scheduleDate);
+      given(schedule.getStartTime()).willReturn(java.time.LocalTime.of(10, 0));
+      given(schedule.getEndTime()).willReturn(java.time.LocalTime.of(11, 0));
+
+      given(member.getId()).willReturn(10L);
+      given(member.getName()).willReturn("관리자확인");
+
+      given(reservationRepository.findAdminReservations(popupId, scheduleDate, status))
+          .willReturn(List.of(reservation));
+
+      // when
+      List<AdminReservationResponse> responses =
+          reservationService.getAdminReservations(popupId, scheduleDate, status);
+
+      // then
+      assertThat(responses).hasSize(1);
+      assertThat(responses.get(0).getReservationId()).isEqualTo(100L);
+      assertThat(responses.get(0).getReservationNumber()).isEqualTo("R20260915ADMIN");
     }
   }
 }

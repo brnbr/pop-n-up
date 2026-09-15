@@ -1,468 +1,308 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 import com.popnup.popnupbackend.domain.popup.entity.Popup;
-import com.popnup.popnupbackend.domain.popup.entity.PopupCategory;
-import com.popnup.popnupbackend.domain.popup.entity.PopupStatus;
 import com.popnup.popnupbackend.domain.popup.exception.PopupNotFoundException;
 import com.popnup.popnupbackend.domain.popup.repository.PopupRepository;
 import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleBatchCreateRequest;
 import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleCreateRequest;
-import com.popnup.popnupbackend.domain.schedule.dto.response.ScheduleResponse;
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import com.popnup.popnupbackend.global.error.ServiceException;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.List;
 import java.util.Optional;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-@Slf4j
 @ExtendWith(MockitoExtension.class)
 class ScheduleServiceTest {
 
-  @Mock private ScheduleRepository scheduleRepository;
-  @Mock private PopupRepository popupRepository;
-
   @InjectMocks private ScheduleService scheduleService;
 
-  private Popup openPopup;
-
-  @BeforeEach
-  void setUp() {
-    openPopup =
-        Popup.builder()
-            .title("테스트 팝업")
-            .category(PopupCategory.ETC)
-            .region("서울")
-            .address("서울시 강남구")
-            .startDate(LocalDate.now().minusDays(5))
-            .endDate(LocalDate.now().plusDays(30))
-            .isFree(true)
-            .price(0)
-            .status(PopupStatus.OPEN)
-            .build();
-    ReflectionTestUtils.setField(openPopup, "id", 1L);
-  }
-
-  // ScheduleCreateRequest는 생성자/빌더가 없는 @Getter 전용 DTO라 Mockito.mock()으로 stub
-  private ScheduleCreateRequest mockCreateRequest(
-      Long popupId,
-      LocalDate scheduleDate,
-      LocalTime startTime,
-      LocalTime endTime,
-      int maxCapacity) {
-    ScheduleCreateRequest request = Mockito.mock(ScheduleCreateRequest.class);
-    given(request.getPopupId()).willReturn(popupId);
-    given(request.getScheduleDate()).willReturn(scheduleDate);
-    given(request.getStartTime()).willReturn(startTime);
-    given(request.getEndTime()).willReturn(endTime);
-    given(request.getMaxCapacity()).willReturn(maxCapacity);
-    return request;
-  }
+  @Mock private ScheduleRepository scheduleRepository;
+  @Mock private PopupRepository popupRepository;
+  @Mock private ScheduleCapacityCache scheduleCapacityCache;
 
   @Nested
-  @DisplayName("getScheduleByDate 검증")
-  class GetScheduleByDate {
+  @DisplayName("스케줄 단건 등록 [createSchedule]")
+  class CreateScheduleTest {
 
     @Test
-    @DisplayName("활성 스케줄 목록을 ScheduleResponse로 변환해 반환한다")
-    void success() {
-      LocalDate date = LocalDate.now().plusDays(1);
-      Schedule schedule =
-          Schedule.createSchedule(openPopup, date, LocalTime.of(10, 0), LocalTime.of(11, 0), 10);
-      given(scheduleRepository.findActiveSchedulesByDate(1L, date)).willReturn(List.of(schedule));
+    @DisplayName("성공: 유효한 요청 시 스케줄이 저장되고 Redis 캐시가 초기화된다")
+    void createSchedule_success() {
+      // given
+      Long popupId = 1L;
+      LocalDate scheduleDate = LocalDate.of(2026, 9, 20);
+      LocalTime startTime = LocalTime.of(10, 0);
+      LocalTime endTime = LocalTime.of(11, 0);
+      int maxCapacity = 30;
 
-      log.info("[getScheduleByDate.success] input(popupId=1, date={})", date);
+      ScheduleCreateRequest request = new ScheduleCreateRequest();
+      ReflectionTestUtils.setField(request, "popupId", popupId);
+      ReflectionTestUtils.setField(request, "scheduleDate", scheduleDate);
+      ReflectionTestUtils.setField(request, "startTime", startTime);
+      ReflectionTestUtils.setField(request, "endTime", endTime);
+      ReflectionTestUtils.setField(request, "maxCapacity", maxCapacity);
 
-      List<ScheduleResponse> result = scheduleService.getScheduleByDate(1L, date);
+      Popup popup = mock(Popup.class);
+      given(popup.getId()).willReturn(popupId);
+      given(popup.getStartDate()).willReturn(LocalDate.of(2026, 9, 1));
+      given(popup.getEndDate()).willReturn(LocalDate.of(2026, 9, 30));
 
-      log.info("[getScheduleByDate.success] expectedSize=1 actualSize={}", result.size());
+      Schedule savedSchedule = mock(Schedule.class);
+      given(savedSchedule.getId()).willReturn(100L);
+      given(savedSchedule.getScheduleDate()).willReturn(scheduleDate);
 
-      assertThat(result).hasSize(1);
-      assertThat(result.get(0).getPopupTitle()).isEqualTo("테스트 팝업");
-    }
-  }
-
-  @Nested
-  @DisplayName("createSchedule 검증")
-  class CreateSchedule {
-
-    @Test
-    @DisplayName("정상 등록 시 스케줄이 저장된다")
-    void success() {
-      LocalDate scheduleDate = LocalDate.now().plusDays(1);
-      ScheduleCreateRequest request =
-          mockCreateRequest(1L, scheduleDate, LocalTime.of(10, 0), LocalTime.of(11, 0), 10);
-
-      given(popupRepository.findById(1L)).willReturn(Optional.of(openPopup));
-      given(
-              scheduleRepository.existOverlappingSchedule(
-                  1L, scheduleDate, LocalTime.of(10, 0), LocalTime.of(11, 0)))
+      given(popupRepository.findById(popupId)).willReturn(Optional.of(popup));
+      given(scheduleRepository.existOverlappingSchedule(popupId, scheduleDate, startTime, endTime))
           .willReturn(false);
-      given(scheduleRepository.save(any(Schedule.class)))
-          .willAnswer(
-              invocation -> {
-                Schedule s = invocation.getArgument(0);
-                ReflectionTestUtils.setField(s, "id", 200L);
-                return s;
-              });
+      given(scheduleRepository.save(any(Schedule.class))).willReturn(savedSchedule);
 
-      log.info("[createSchedule.success] input(popupId=1, date={})", scheduleDate);
+      // when
+      Long createdId = scheduleService.createSchedule(request);
 
-      Long resultId = scheduleService.createSchedule(request);
-
-      log.info("[createSchedule.success] expectedId=200 actualId={}", resultId);
-
-      assertThat(resultId).isEqualTo(200L);
+      // then
+      assertThat(createdId).isEqualTo(100L);
+      verify(scheduleRepository).save(any(Schedule.class));
+      verify(scheduleCapacityCache).init(100L, scheduleDate, maxCapacity);
     }
 
     @Test
-    @DisplayName("팝업이 존재하지 않으면 예외 발생")
-    void popupNotFound() {
-      ScheduleCreateRequest request = Mockito.mock(ScheduleCreateRequest.class);
-      given(request.getPopupId()).willReturn(999L);
-      given(popupRepository.findById(999L)).willReturn(Optional.empty());
+    @DisplayName("실패: 팝업이 존재하지 않으면 PopupNotFoundException이 발생한다")
+    void createSchedule_popupNotFound() {
+      // given
+      ScheduleCreateRequest request = new ScheduleCreateRequest();
+      ReflectionTestUtils.setField(request, "popupId", 999L);
 
-      log.info("[createSchedule.popupNotFound] input(popupId=999)");
+      given(popupRepository.findById(anyLong())).willReturn(Optional.empty());
 
-      assertThrows(PopupNotFoundException.class, () -> scheduleService.createSchedule(request));
-
-      log.info("[createSchedule.popupNotFound] expected PopupNotFoundException thrown");
+      // when & then
+      assertThatThrownBy(() -> scheduleService.createSchedule(request))
+          .isInstanceOf(PopupNotFoundException.class);
     }
 
     @Test
-    @DisplayName("팝업 운영 기간을 벗어나면 예외 발생")
-    void outsidePopupPeriod() {
-      LocalDate outOfRangeDate = openPopup.getEndDate().plusDays(1);
-      ScheduleCreateRequest request = Mockito.mock(ScheduleCreateRequest.class);
-      given(request.getPopupId()).willReturn(1L);
-      given(request.getScheduleDate()).willReturn(outOfRangeDate);
-      given(popupRepository.findById(1L)).willReturn(Optional.of(openPopup));
+    @DisplayName("실패: 스케줄 날짜가 팝업 운영 기간 이전이거나 이후이면 IllegalArgumentException이 발생한다")
+    void createSchedule_outOfPeriod() {
+      // given
+      Long popupId = 1L;
+      ScheduleCreateRequest request = new ScheduleCreateRequest();
+      ReflectionTestUtils.setField(request, "popupId", popupId);
+      ReflectionTestUtils.setField(request, "scheduleDate", LocalDate.of(2026, 10, 15));
 
-      log.info(
-          "[createSchedule.outsidePopupPeriod] input(scheduleDate={}, popupEndDate={})",
-          outOfRangeDate,
-          openPopup.getEndDate());
+      Popup popup = mock(Popup.class);
+      given(popup.getStartDate()).willReturn(LocalDate.of(2026, 9, 1));
+      given(popup.getEndDate()).willReturn(LocalDate.of(2026, 9, 30));
 
-      assertThrows(IllegalArgumentException.class, () -> scheduleService.createSchedule(request));
+      given(popupRepository.findById(popupId)).willReturn(Optional.of(popup));
 
-      log.info("[createSchedule.outsidePopupPeriod] expected IllegalArgumentException thrown");
+      // when & then
+      assertThatThrownBy(() -> scheduleService.createSchedule(request))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessage("스케줄 날짜는 팝업 운영 기간 내여야 합니다.");
     }
 
     @Test
-    @DisplayName("시간대가 겹치면 예외 발생")
-    void overlapping() {
-      LocalDate scheduleDate = LocalDate.now().plusDays(1);
+    @DisplayName("실패: 겹치는 시간대의 스케줄이 존재하면 DUPLICATE_TIME_SLOT 예외가 발생한다")
+    void createSchedule_duplicateTimeSlot() {
+      // given
+      Long popupId = 1L;
+      LocalDate scheduleDate = LocalDate.of(2026, 9, 20);
+      LocalTime startTime = LocalTime.of(10, 0);
+      LocalTime endTime = LocalTime.of(11, 0);
 
-      ScheduleCreateRequest request = Mockito.mock(ScheduleCreateRequest.class);
-      given(request.getPopupId()).willReturn(1L);
-      given(request.getScheduleDate()).willReturn(scheduleDate);
-      given(request.getStartTime()).willReturn(LocalTime.of(10, 0));
-      given(request.getEndTime()).willReturn(LocalTime.of(11, 0));
+      ScheduleCreateRequest request = new ScheduleCreateRequest();
+      ReflectionTestUtils.setField(request, "popupId", popupId);
+      ReflectionTestUtils.setField(request, "scheduleDate", scheduleDate);
+      ReflectionTestUtils.setField(request, "startTime", startTime);
+      ReflectionTestUtils.setField(request, "endTime", endTime);
 
-      given(popupRepository.findById(1L)).willReturn(Optional.of(openPopup));
-      given(
-              scheduleRepository.existOverlappingSchedule(
-                  1L, scheduleDate, LocalTime.of(10, 0), LocalTime.of(11, 0)))
+      Popup popup = mock(Popup.class);
+      given(popup.getId()).willReturn(popupId);
+      given(popup.getStartDate()).willReturn(LocalDate.of(2026, 9, 1));
+      given(popup.getEndDate()).willReturn(LocalDate.of(2026, 9, 30));
+
+      given(popupRepository.findById(popupId)).willReturn(Optional.of(popup));
+      given(scheduleRepository.existOverlappingSchedule(popupId, scheduleDate, startTime, endTime))
           .willReturn(true);
 
-      log.info("[createSchedule.overlapping] input(popupId=1, date={})", scheduleDate);
+      // when & then
+      assertThatThrownBy(() -> scheduleService.createSchedule(request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.DUPLICATE_TIME_SLOT));
+    }
+  }
 
-      ServiceException exception =
-          assertThrows(ServiceException.class, () -> scheduleService.createSchedule(request));
+  @Nested
+  @DisplayName("타임 슬롯 일괄 등록 [createBatchSchedules]")
+  class CreateBatchSchedulesTest {
 
-      log.info(
-          "[createSchedule.overlapping] expectedErrorCode={} actualErrorCode={}",
-          ScheduleErrorCode.DUPLICATE_TIME_SLOT,
-          exception.getErrorCode());
+    @Test
+    @DisplayName("성공: 간격에 맞게 분할된 스케줄들이 한 번에 저장되고 생성된 개수를 반환한다")
+    void createBatchSchedules_success() {
+      // given
+      Long popupId = 1L;
+      LocalDate scheduleDate = LocalDate.of(2026, 9, 20);
+      LocalTime openTime = LocalTime.of(10, 0);
+      LocalTime closeTime = LocalTime.of(13, 0);
+      int intervalMinutes = 60;
+      int maxCapacity = 20;
 
-      assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.DUPLICATE_TIME_SLOT);
+      ScheduleBatchCreateRequest request = new ScheduleBatchCreateRequest();
+      ReflectionTestUtils.setField(request, "popupId", popupId);
+      ReflectionTestUtils.setField(request, "scheduleDate", scheduleDate);
+      ReflectionTestUtils.setField(request, "openTime", openTime);
+      ReflectionTestUtils.setField(request, "closeTime", closeTime);
+      ReflectionTestUtils.setField(request, "intervalMinutes", intervalMinutes);
+      ReflectionTestUtils.setField(request, "maxCapacity", maxCapacity);
+
+      Popup popup = mock(Popup.class);
+      given(popup.getId()).willReturn(popupId);
+      given(popup.getStartDate()).willReturn(LocalDate.of(2026, 9, 1));
+      given(popup.getEndDate()).willReturn(LocalDate.of(2026, 9, 30));
+
+      given(popupRepository.findById(popupId)).willReturn(Optional.of(popup));
+      given(scheduleRepository.existOverlappingSchedule(popupId, scheduleDate, openTime, closeTime))
+          .willReturn(false);
+
+      // when
+      int createdCount = scheduleService.createBatchSchedules(request);
+
+      // then: 10:00~11:00, 11:00~12:00, 12:00~13:00 -> 총 3개 슬롯
+      assertThat(createdCount).isEqualTo(3);
+      verify(scheduleRepository).saveAll(anyList());
     }
 
-    @Nested
-    @DisplayName("createBatchSchedules 검증")
-    class CreateBatchSchedules {
+    @Test
+    @DisplayName("실패: 종료 시간이 시작 시간보다 같거나 빠르면 INVALID_TIME_RANGE 예외가 발생한다")
+    void createBatchSchedules_invalidTimeRange() {
+      // given
+      ScheduleBatchCreateRequest request = new ScheduleBatchCreateRequest();
+      ReflectionTestUtils.setField(request, "openTime", LocalTime.of(15, 0));
+      ReflectionTestUtils.setField(request, "closeTime", LocalTime.of(13, 0));
 
-      @Test
-      @DisplayName("openTime~closeTime을 interval 단위로 쪼개 여러 스케줄을 생성한다")
-      void success() {
-        LocalDate scheduleDate = LocalDate.now().plusDays(1);
-        // ScheduleBatchCreateRequest 필드 순서: popupId, scheduleDate, openTime, closeTime,
-        // intervalMinutes, maxCapacity
-        ScheduleBatchCreateRequest request =
-            new ScheduleBatchCreateRequest(
-                1L, scheduleDate, LocalTime.of(10, 0), LocalTime.of(12, 0), 60, 15);
-
-        given(popupRepository.findById(1L)).willReturn(Optional.of(openPopup));
-        given(scheduleRepository.existOverlappingSchedule(any(), any(), any(), any()))
-            .willReturn(false);
-        given(scheduleRepository.saveAll(any()))
-            .willAnswer(invocation -> invocation.getArgument(0));
-
-        log.info(
-            "[createBatchSchedules.success] input(openTime=10:00, closeTime=12:00, interval=60)");
-
-        int createdCount = scheduleService.createBatchSchedules(request);
-
-        log.info("[createBatchSchedules.success] expectedCount=2 actualCount={}", createdCount);
-
-        assertThat(createdCount).isEqualTo(2);
-      }
-
-      @Test
-      @DisplayName("closeTime이 openTime보다 빠르면 예외 발생")
-      void invalidTimeRange() {
-        ScheduleBatchCreateRequest request =
-            new ScheduleBatchCreateRequest(
-                1L, LocalDate.now().plusDays(1), LocalTime.of(12, 0), LocalTime.of(10, 0), 60, 15);
-
-        log.info("[createBatchSchedules.invalidTimeRange] input(openTime=12:00, closeTime=10:00)");
-
-        ServiceException exception =
-            assertThrows(
-                ServiceException.class, () -> scheduleService.createBatchSchedules(request));
-
-        log.info(
-            "[createBatchSchedules.invalidTimeRange] expectedErrorCode={} actualErrorCode={}",
-            ScheduleErrorCode.INVALID_TIME_RANGE,
-            exception.getErrorCode());
-
-        assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.INVALID_TIME_RANGE);
-      }
-
-      @Test
-      @DisplayName("intervalMinutes가 0 이하면 예외 발생")
-      void invalidInterval() {
-        ScheduleBatchCreateRequest request =
-            new ScheduleBatchCreateRequest(
-                1L, LocalDate.now().plusDays(1), LocalTime.of(10, 0), LocalTime.of(12, 0), 0, 15);
-
-        log.info("[createBatchSchedules.invalidInterval] input(intervalMinutes=0)");
-
-        ServiceException exception =
-            assertThrows(
-                ServiceException.class, () -> scheduleService.createBatchSchedules(request));
-
-        log.info(
-            "[createBatchSchedules.invalidInterval] expectedErrorCode={} actualErrorCode={}",
-            ScheduleErrorCode.INVALID_TIME_RANGE,
-            exception.getErrorCode());
-
-        assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.INVALID_TIME_RANGE);
-      }
-
-      @Test
-      @DisplayName("팝업이 존재하지 않으면 예외 발생")
-      void popupNotFound() {
-        ScheduleBatchCreateRequest request =
-            new ScheduleBatchCreateRequest(
-                999L,
-                LocalDate.now().plusDays(1),
-                LocalTime.of(10, 0),
-                LocalTime.of(12, 0),
-                60,
-                15);
-        given(popupRepository.findById(999L)).willReturn(Optional.empty());
-
-        log.info("[createBatchSchedules.popupNotFound] input(popupId=999)");
-
-        assertThrows(
-            PopupNotFoundException.class, () -> scheduleService.createBatchSchedules(request));
-
-        log.info("[createBatchSchedules.popupNotFound] expected PopupNotFoundException thrown");
-      }
-
-      @Test
-      @DisplayName("팝업 운영 기간을 벗어나면 예외 발생")
-      void outsidePopupPeriod() {
-        LocalDate outOfRangeDate = openPopup.getEndDate().plusDays(1);
-        ScheduleBatchCreateRequest request =
-            new ScheduleBatchCreateRequest(
-                1L, outOfRangeDate, LocalTime.of(10, 0), LocalTime.of(12, 0), 60, 15);
-        given(popupRepository.findById(1L)).willReturn(Optional.of(openPopup));
-
-        log.info(
-            "[createBatchSchedules.outsidePopupPeriod] input(scheduleDate={}, popupEndDate={})",
-            outOfRangeDate,
-            openPopup.getEndDate());
-
-        assertThrows(
-            IllegalArgumentException.class, () -> scheduleService.createBatchSchedules(request));
-
-        log.info(
-            "[createBatchSchedules.outsidePopupPeriod] expected IllegalArgumentException thrown");
-      }
-
-      @Test
-      @DisplayName("시간대가 겹치면 예외 발생")
-      void overlapping() {
-        LocalDate scheduleDate = LocalDate.now().plusDays(1);
-        ScheduleBatchCreateRequest request =
-            new ScheduleBatchCreateRequest(
-                1L, scheduleDate, LocalTime.of(10, 0), LocalTime.of(12, 0), 60, 15);
-        given(popupRepository.findById(1L)).willReturn(Optional.of(openPopup));
-        given(
-                scheduleRepository.existOverlappingSchedule(
-                    1L, scheduleDate, LocalTime.of(10, 0), LocalTime.of(12, 0)))
-            .willReturn(true);
-
-        log.info("[createBatchSchedules.overlapping] input(popupId=1, date={})", scheduleDate);
-
-        ServiceException exception =
-            assertThrows(
-                ServiceException.class, () -> scheduleService.createBatchSchedules(request));
-
-        log.info(
-            "[createBatchSchedules.overlapping] expectedErrorCode={} actualErrorCode={}",
-            ScheduleErrorCode.DUPLICATE_TIME_SLOT,
-            exception.getErrorCode());
-
-        assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.DUPLICATE_TIME_SLOT);
-      }
+      // when & then
+      assertThatThrownBy(() -> scheduleService.createBatchSchedules(request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.INVALID_TIME_RANGE));
     }
 
-    @Nested
-    @DisplayName("updateScheduleStatus 검증")
-    class UpdateScheduleStatus {
+    @Test
+    @DisplayName("실패: 인터벌 간격이 0 이하이거나 null이면 INVALID_TIME_RANGE 예외가 발생한다")
+    void createBatchSchedules_invalidInterval() {
+      // given
+      ScheduleBatchCreateRequest request = new ScheduleBatchCreateRequest();
+      ReflectionTestUtils.setField(request, "openTime", LocalTime.of(10, 0));
+      ReflectionTestUtils.setField(request, "closeTime", LocalTime.of(15, 0));
+      ReflectionTestUtils.setField(request, "intervalMinutes", 0);
 
-      @Test
-      @DisplayName("정상적으로 활성 상태를 변경한다")
-      void success() {
-        Schedule schedule =
-            Schedule.createSchedule(
-                openPopup,
-                LocalDate.now().plusDays(1),
-                LocalTime.of(10, 0),
-                LocalTime.of(11, 0),
-                10);
-        given(scheduleRepository.findById(200L)).willReturn(Optional.of(schedule));
+      // when & then
+      assertThatThrownBy(() -> scheduleService.createBatchSchedules(request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.INVALID_TIME_RANGE));
+    }
+  }
 
-        log.info("[updateScheduleStatus.success] input(scheduleId=200, isActive=false)");
+  @Nested
+  @DisplayName("타임 슬롯 활성화/비활성화 [updateScheduleStatus]")
+  class UpdateScheduleStatusTest {
 
-        scheduleService.updateScheduleStatus(200L, false);
+    @Test
+    @DisplayName("성공: 스케줄을 조회하여 상태 변경 메서드를 호출한다")
+    void updateScheduleStatus_success() {
+      // given
+      Long scheduleId = 10L;
+      Schedule schedule = mock(Schedule.class);
+      given(scheduleRepository.findById(scheduleId)).willReturn(Optional.of(schedule));
 
-        log.info(
-            "[updateScheduleStatus.success] expectedActive=false actualActive={}",
-            schedule.isActive());
+      // when
+      scheduleService.updateScheduleStatus(scheduleId, false);
 
-        assertThat(schedule.isActive()).isFalse();
-      }
-
-      @Test
-      @DisplayName("스케줄이 존재하지 않으면 예외 발생")
-      void notFound() {
-        given(scheduleRepository.findById(999L)).willReturn(Optional.empty());
-
-        log.info("[updateScheduleStatus.notFound] input(scheduleId=999)");
-
-        ServiceException exception =
-            assertThrows(
-                ServiceException.class, () -> scheduleService.updateScheduleStatus(999L, true));
-
-        log.info(
-            "[updateScheduleStatus.notFound] expectedErrorCode={} actualErrorCode={}",
-            ScheduleErrorCode.SCHEDULE_NOT_FOUND,
-            exception.getErrorCode());
-
-        assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.SCHEDULE_NOT_FOUND);
-      }
+      // then
+      verify(schedule).updateActiveStatus(false);
     }
 
-    @Nested
-    @DisplayName("deleteSchedule 검증")
-    class DeleteSchedule {
+    @Test
+    @DisplayName("실패: 스케줄이 존재하지 않으면 SCHEDULE_NOT_FOUND 예외가 발생한다")
+    void updateScheduleStatus_notFound() {
+      // given
+      Long scheduleId = 999L;
+      given(scheduleRepository.findById(scheduleId)).willReturn(Optional.empty());
 
-      @Test
-      @DisplayName("예약자가 없으면 정상 삭제된다")
-      void success() {
-        Schedule schedule =
-            Schedule.createSchedule(
-                openPopup,
-                LocalDate.now().plusDays(1),
-                LocalTime.of(10, 0),
-                LocalTime.of(11, 0),
-                10);
-        given(scheduleRepository.findByIdWithPessimisticLock(200L))
-            .willReturn(Optional.of(schedule));
+      // when & then
+      assertThatThrownBy(() -> scheduleService.updateScheduleStatus(scheduleId, true))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.SCHEDULE_NOT_FOUND));
+    }
+  }
 
-        log.info("[deleteSchedule.success] input(scheduleId=200, nowCapacity=0)");
+  @Nested
+  @DisplayName("스케줄 삭제 [deleteSchedule]")
+  class DeleteScheduleTest {
 
-        scheduleService.deleteSchedule(200L);
+    @Test
+    @DisplayName("성공: 예약 인원이 없는 스케줄은 정상 삭제된다")
+    void deleteSchedule_success() {
+      // given
+      Long scheduleId = 10L;
+      Schedule schedule = mock(Schedule.class);
+      given(scheduleRepository.findByIdWithPessimisticLock(scheduleId))
+          .willReturn(Optional.of(schedule));
+      given(schedule.getNowCapacity()).willReturn(0);
 
-        log.info("[deleteSchedule.success] verify scheduleRepository.delete called");
+      // when
+      scheduleService.deleteSchedule(scheduleId);
 
-        verify(scheduleRepository, times(1)).delete(schedule);
-      }
+      // then
+      verify(scheduleRepository).delete(schedule);
+    }
 
-      @Test
-      @DisplayName("예약자가 있으면 삭제할 수 없다")
-      void cannotDeleteReserved() {
-        Schedule schedule =
-            Schedule.createSchedule(
-                openPopup,
-                LocalDate.now().plusDays(1),
-                LocalTime.of(10, 0),
-                LocalTime.of(11, 0),
-                10);
-        schedule.addReservation(1, LocalDateTime.now());
-        given(scheduleRepository.findByIdWithPessimisticLock(200L))
-            .willReturn(Optional.of(schedule));
+    @Test
+    @DisplayName("실패: 이미 예약 인원이 존재하는 스케줄은 CANNOT_DELETE_RESERVED_SCHEDULE 예외가 발생한다")
+    void deleteSchedule_hasReservations() {
+      // given
+      Long scheduleId = 10L;
+      Schedule schedule = mock(Schedule.class);
+      given(scheduleRepository.findByIdWithPessimisticLock(scheduleId))
+          .willReturn(Optional.of(schedule));
+      given(schedule.getNowCapacity()).willReturn(3);
 
-        log.info(
-            "[deleteSchedule.cannotDeleteReserved] input(scheduleId=200, nowCapacity={})",
-            schedule.getNowCapacity());
+      // when & then
+      assertThatThrownBy(() -> scheduleService.deleteSchedule(scheduleId))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.CANNOT_DELETE_RESERVED_SCHEDULE));
 
-        ServiceException exception =
-            assertThrows(ServiceException.class, () -> scheduleService.deleteSchedule(200L));
-
-        log.info(
-            "[deleteSchedule.cannotDeleteReserved] expectedErrorCode={} actualErrorCode={}",
-            ScheduleErrorCode.CANNOT_DELETE_RESERVED_SCHEDULE,
-            exception.getErrorCode());
-
-        assertThat(exception.getErrorCode())
-            .isEqualTo(ScheduleErrorCode.CANNOT_DELETE_RESERVED_SCHEDULE);
-        verify(scheduleRepository, never()).delete(any());
-      }
-
-      @Test
-      @DisplayName("스케줄이 존재하지 않으면 예외 발생")
-      void notFound() {
-        given(scheduleRepository.findByIdWithPessimisticLock(999L)).willReturn(Optional.empty());
-
-        log.info("[deleteSchedule.notFound] input(scheduleId=999)");
-
-        ServiceException exception =
-            assertThrows(ServiceException.class, () -> scheduleService.deleteSchedule(999L));
-
-        log.info(
-            "[deleteSchedule.notFound] expectedErrorCode={} actualErrorCode={}",
-            ScheduleErrorCode.SCHEDULE_NOT_FOUND,
-            exception.getErrorCode());
-
-        assertThat(exception.getErrorCode()).isEqualTo(ScheduleErrorCode.SCHEDULE_NOT_FOUND);
-      }
+      verify(scheduleRepository, never()).delete(any(Schedule.class));
     }
   }
 }
