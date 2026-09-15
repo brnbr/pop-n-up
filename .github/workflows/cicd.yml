@@ -4,8 +4,7 @@ name: CI Pipeline
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 # OIDC 토큰 요청 권한
 permissions:
