@@ -14,11 +14,11 @@ public class ReservationScheduler {
 
   private final ReservationTimeoutProcessor reservationTimeoutProcessor;
 
-  @Scheduled(cron = "0 * * * * *")
+  @Scheduled(cron = "${reservation.scheduler.payment-timeout-cron:0 * * * * *}")
   @SchedulerLock(
       name = "cancelExpiredPendingReservationsLock",
-      lockAtMostFor = "50s",
-      lockAtLeastFor = "10s")
+      lockAtMostFor = "${reservation.scheduler.payment-timeout-lock-at-most-for:50s}",
+      lockAtLeastFor = "${reservation.scheduler.payment-timeout-lock-at-least-for:10s}")
   public void cancelExpiredPendingReservations() {
     log.debug("[Scheduler] 미결제 예약 만료 처리 스케줄러 시작");
     try {
@@ -29,11 +29,11 @@ public class ReservationScheduler {
     }
   }
 
-  @Scheduled(cron = "0 */10 * * * *")
+  @Scheduled(cron = "${reservation.scheduler.no-show-cron:0 */10 * * * *}")
   @SchedulerLock(
       name = "expirePastConfirmedReservationLock",
-      lockAtMostFor = "9m",
-      lockAtLeastFor = "30s")
+      lockAtMostFor = "${reservation.scheduler.no-show-lock-at-most-for:9m}",
+      lockAtLeastFor = "${reservation.scheduler.no-show-lock-at-least-for:30s}")
   public void expirePastConfirmedReservation() {
     log.debug("[Scheduler] 지난 회차 미방문 예약 만료 스케줄러 시작");
     try {
