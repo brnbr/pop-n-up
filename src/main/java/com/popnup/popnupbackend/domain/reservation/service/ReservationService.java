@@ -18,9 +18,10 @@ import com.popnup.popnupbackend.domain.reservation.repository.ReservationReposit
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -38,43 +39,64 @@ public class ReservationService {
   private final MemberRepository memberRepository;
   private final QrService qrService;
   private final ReservationCancelManager reservationCancelManager;
+  private final ScheduleCapacityCache scheduleCapacityCache;
 
-  // 예약 생성
+  @RateLimiter(name = "reservationBooking")
   @Transactional
-  public ReservationCreateResponse book(Long memberId, ReservationCreateRequest request) {
+  public ReservationCreateResponse bookWithConditionalUpdate(
+      Long memberId, ReservationCreateRequest request) {
     Member member =
         memberRepository
             .findById(memberId)
             .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
 
-    Schedule schedule =
-        scheduleRepository
-            .findByIdWithPessimisticLock(request.getScheduleId())
-            .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
-
-    if (reservationRepository.hasActiveReservation(schedule.getId(), memberId)) {
+    if (reservationRepository.hasActiveReservation(request.getScheduleId(), memberId)) {
       throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
     }
 
-    schedule.addReservation(request.getPersonCount(), LocalDateTime.now());
+    boolean passed =
+        scheduleCapacityCache.tryReserve(request.getScheduleId(), request.getPersonCount());
+    if (!passed) {
+      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
+    }
 
-    String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-    String timeUUID =
-        Generators.timeBasedGenerator()
-            .generate()
-            .toString()
-            .replace("-", "")
-            .substring(0, 8)
-            .toUpperCase();
-    String reservationNumber = "R" + today + timeUUID;
+    try {
+      String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+      String timeUUID =
+          Generators.timeBasedGenerator()
+              .generate()
+              .toString()
+              .replace("-", "")
+              .substring(0, 8)
+              .toUpperCase();
+      String reservationNumber = "R" + today + timeUUID;
 
-    Reservation reservation =
-        Reservation.createReservation(
-            reservationNumber, member, schedule, request.getPersonCount());
-    Reservation savedReservation = reservationRepository.save(reservation);
+      Schedule schedule =
+          scheduleRepository
+              .findByIdForValidation(request.getScheduleId())
+              .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+      schedule.validateBookable(LocalDateTime.now());
 
-    return ReservationCreateResponse.from(
-        savedReservation.getId(), savedReservation.getReservationNumber());
+      int affectedRows =
+          scheduleRepository.tryIncreaseCapacity(request.getScheduleId(), request.getPersonCount());
+      if (affectedRows == 0) {
+        throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
+      }
+
+      Reservation reservation =
+          Reservation.createReservation(
+              reservationNumber, member, schedule, request.getPersonCount());
+      Reservation savedReservation = reservationRepository.save(reservation);
+
+      return ReservationCreateResponse.from(
+          savedReservation.getId(), savedReservation.getReservationNumber());
+
+    } catch (Exception e) {
+      // Redis 필터는 통과했지만 DB 단계(정원 초과, 비활성 스케줄, 팝업 미오픈 등 사유 불문)에서
+      // 예약이 최종 실패한 모든 경우, Redis 카운터를 되돌려 다음 요청들의 판단 정확도를 유지
+      scheduleCapacityCache.compensate(request.getScheduleId(), request.getPersonCount());
+      throw e;
+    }
   }
 
   // 결제 시 예약 확정
@@ -158,28 +180,5 @@ public class ReservationService {
     return reservationRepository.findAdminReservations(popupId, scheduleDate, status).stream()
         .map(AdminReservationResponse::from)
         .toList();
-  }
-
-  // 미사용 예약 만료 상태 변경
-  @Transactional
-  public void expirePastReservation() {
-    LocalDate today = LocalDate.now();
-    LocalTime nowTime = LocalTime.now();
-
-    List<Reservation> expiredList = reservationRepository.findExpiredReservations(today, nowTime);
-
-    if (expiredList.isEmpty()) {
-      return;
-    }
-
-    log.info("[expiredPastReservation] 만료 처리 대상 건수: {}건", expiredList.size());
-
-    for (Reservation reservation : expiredList) {
-      try {
-        reservationCancelManager.expireNoShow(reservation.getId());
-      } catch (Exception e) {
-        log.error("[expiredPastReservation] 예약 단건 만료 처리 실패 (ID: {})", reservation.getId(), e);
-      }
-    }
   }
 }
