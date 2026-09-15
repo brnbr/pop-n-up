@@ -2,18 +2,10 @@ spring:
   application:
     name: popnup
 
-  datasource:
-    url: jdbc:h2:mem:popnup
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-
-  profiles:
-    active: local
-
   config:
     import:
       - optional:file:.env[.properties]
+
   jpa:
     open-in-view: false
 
@@ -34,11 +26,10 @@ spring:
 
         provider:
           kakao:
-            authorization_uri: https://kauth.kakao.com/oauth/authorize
-            token_uri: https://kauth.kakao.com/oauth/token
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
-            user_name_attribute: id
-
+            user-name-attribute: id
 
 kakaopay:
   secretKey: ${KAKAOPAY_SECRET_KEY}
@@ -47,7 +38,6 @@ kakaopay:
 jwt:
   secret: ${JWT_SECRET}
 
-  # 네이버 지도 API 공동 설정 추가
 naver:
   maps:
     client-id: ${NAVER_MAPS_CLIENT_ID}
