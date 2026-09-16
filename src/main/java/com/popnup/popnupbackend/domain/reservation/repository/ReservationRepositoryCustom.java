@@ -35,4 +35,10 @@ public interface ReservationRepositoryCustom {
 
   List<Reservation> findPendingReservationsChunk(
       ReservationStatus status, LocalDateTime deadline, int chunkSize);
+
+  List<Reservation> findPendingReservationsChunkForUpdate(
+      ReservationStatus status, LocalDateTime deadline, int chunkSize);
+
+  List<Reservation> findExpiredReservationsChunkForUpdate(
+      LocalDate today, LocalTime currentTime, int chunkSize);
 }
