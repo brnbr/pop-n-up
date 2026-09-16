@@ -36,7 +36,7 @@ kakaopay:
   cid: TC0ONETIME
 
 jwt:
-  secret: ${JWT_SECRET}
+  secret: ${JWT_SECRET:c29tZS1qd3Qtc2VjcmV0LWtleS1leGFtcGxlLWZvci1sb2NhbC10ZXN0aW5nMTIzNDU=}
 
 naver:
   maps:
