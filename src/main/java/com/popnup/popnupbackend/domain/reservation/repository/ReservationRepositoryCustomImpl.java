@@ -23,6 +23,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ReservationRepositoryCustomImpl implements ReservationRepositoryCustom {
 
+  private static final int SKIP_LOCKED = -2;
+
   private final JPAQueryFactory queryFactory;
 
   private JPAQuery<Reservation> selectReservationWithDetails() {
@@ -168,6 +170,42 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
         .where(reservation.status.eq(status), reservation.createdAt.before(deadline))
         .orderBy(reservation.id.asc())
         .limit(chunkSize)
+        .fetch();
+  }
+
+  @Override
+  public List<Reservation> findPendingReservationsChunkForUpdate(
+      ReservationStatus status, LocalDateTime deadline, int chunkSize) {
+    QReservation reservation = QReservation.reservation;
+
+    return queryFactory
+        .selectFrom(reservation)
+        .where(reservation.status.eq(status), reservation.createdAt.before(deadline))
+        .orderBy(reservation.id.asc())
+        .limit(chunkSize)
+        .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+        .setHint("jakarta.persistence.lock.timeout", SKIP_LOCKED)
+        .fetch();
+  }
+
+  @Override
+  public List<Reservation> findExpiredReservationsChunkForUpdate(
+      LocalDate today, LocalTime currentTime, int chunkSize) {
+    QReservation reservation = QReservation.reservation;
+
+    return queryFactory
+        .selectFrom(reservation)
+        .join(reservation.schedule, schedule)
+        .where(
+            reservation.status.eq(ReservationStatus.CONFIRMED),
+            schedule
+                .scheduleDate
+                .lt(today)
+                .or(schedule.scheduleDate.eq(today).and(schedule.endTime.lt(currentTime))))
+        .orderBy(reservation.id.asc())
+        .limit(chunkSize)
+        .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+        .setHint("jakarta.persistence.lock.timeout", SKIP_LOCKED)
         .fetch();
   }
 
