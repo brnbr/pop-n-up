@@ -84,6 +84,18 @@ public class Schedule extends BaseEntity {
     return new Schedule(popup, scheduleDate, startTime, endTime, maxCapacity);
   }
 
+  public void validateBookable(LocalDateTime currentDateTime) {
+    if (!this.isActive) {
+      throw ScheduleErrorCode.SCHEDULE_INACTIVE.toException();
+    }
+    if (isAlreadyStarted(currentDateTime)) {
+      throw ScheduleErrorCode.SCHEDULE_ALREADY_STARTED.toException();
+    }
+    if (this.popup.getStatus() != PopupStatus.OPEN) {
+      throw ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND.toException();
+    }
+  }
+
   // 예약 인원 추가
   public void addReservation(int count, LocalDateTime currentDateTime) {
     if (count <= 0) {

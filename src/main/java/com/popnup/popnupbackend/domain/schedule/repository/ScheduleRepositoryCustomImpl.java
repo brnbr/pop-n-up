@@ -60,4 +60,43 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
 
     return Optional.ofNullable(result);
   }
+
+  @Override
+  public int tryIncreaseCapacity(Long scheduleId, int count) {
+    long affectedRows =
+        queryFactory
+            .update(schedule)
+            .set(schedule.nowCapacity, schedule.nowCapacity.add(count))
+            .where(
+                schedule.id.eq(scheduleId),
+                schedule.nowCapacity.add(count).loe(schedule.maxCapacity))
+            .execute();
+
+    return (int) affectedRows;
+  }
+
+  @Override
+  public Optional<Schedule> findByIdForValidation(Long id) {
+    Schedule result =
+        queryFactory
+            .selectFrom(schedule)
+            .join(schedule.popup, popup)
+            .fetchJoin()
+            .where(schedule.id.eq(id))
+            .fetchOne();
+
+    return Optional.ofNullable(result);
+  }
+
+  @Override
+  public int tryDecreaseCapacity(Long scheduleId, int count) {
+    long affectedRows =
+        queryFactory
+            .update(schedule)
+            .set(schedule.nowCapacity, schedule.nowCapacity.subtract(count))
+            .where(schedule.id.eq(scheduleId), schedule.nowCapacity.goe(count))
+            .execute();
+
+    return (int) affectedRows;
+  }
 }

@@ -51,7 +51,6 @@ public class Reservation extends BaseEntity {
     this.status = status;
   }
 
-  // 예약 생성 - 결제하면 confirme되게 추가해야 함
   public static Reservation createReservation(
       String reservationNumber, Member member, Schedule schedule, Integer personCount) {
     return new Reservation(

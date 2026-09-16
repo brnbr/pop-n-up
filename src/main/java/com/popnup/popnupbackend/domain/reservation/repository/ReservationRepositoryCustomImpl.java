@@ -5,13 +5,16 @@ import static com.popnup.popnupbackend.domain.popup.entity.QPopup.popup;
 import static com.popnup.popnupbackend.domain.reservation.entity.QReservation.reservation;
 import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule;
 
+import com.popnup.popnupbackend.domain.reservation.entity.QReservation;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
+import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -71,21 +74,6 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   }
 
   @Override
-  public List<Reservation> findExpiredReservations(LocalDate today, LocalTime currentTime) {
-    return queryFactory
-        .selectFrom(reservation)
-        .join(reservation.schedule, schedule)
-        .fetchJoin()
-        .where(
-            reservation.status.eq(ReservationStatus.CONFIRMED),
-            schedule
-                .scheduleDate
-                .lt(today)
-                .or(schedule.scheduleDate.eq(today).and(schedule.endTime.lt(currentTime))))
-        .fetch();
-  }
-
-  @Override
   public Optional<Reservation> findByReservationNumberWithPessimisticLock(
       String reservationNumber) {
     Reservation result =
@@ -112,7 +100,77 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
     return Optional.ofNullable(result);
   }
 
-  // todo dsl 적용 후 삭제
+  @Override
+  public int tryUpdateStatus(
+      Long reservationId, ReservationStatus newStatus, List<ReservationStatus> fromStatuses) {
+    long affectedRows =
+        queryFactory
+            .update(reservation)
+            .set(reservation.status, newStatus)
+            .where(reservation.id.eq(reservationId), reservation.status.in(fromStatuses))
+            .execute();
+
+    return (int) affectedRows;
+  }
+
+  @Override
+  public Optional<ScheduleAndPersonCount> findScheduleAndPersonCount(Long reservationId) {
+    ScheduleAndPersonCount result =
+        queryFactory
+            .select(
+                Projections.constructor(
+                    ScheduleAndPersonCount.class, reservation.schedule.id, reservation.personCount))
+            .from(reservation)
+            .where(reservation.id.eq(reservationId))
+            .fetchOne();
+
+    return Optional.ofNullable(result);
+  }
+
+  @Override
+  public Optional<ReservationStatus> findStatusById(Long reservationId) {
+    ReservationStatus result =
+        queryFactory
+            .select(reservation.status)
+            .from(reservation)
+            .where(reservation.id.eq(reservationId))
+            .fetchOne();
+
+    return Optional.ofNullable(result);
+  }
+
+  @Override
+  public List<Reservation> findExpiredReservationsChunk(
+      LocalDate today, LocalTime currentTime, int chunkSize) {
+    QReservation reservation = QReservation.reservation;
+
+    return queryFactory
+        .selectFrom(reservation)
+        .join(reservation.schedule, schedule)
+        .where(
+            reservation.status.eq(ReservationStatus.CONFIRMED),
+            schedule
+                .scheduleDate
+                .lt(today)
+                .or(schedule.scheduleDate.eq(today).and(schedule.endTime.lt(currentTime))))
+        .orderBy(reservation.id.asc())
+        .limit(chunkSize)
+        .fetch();
+  }
+
+  @Override
+  public List<Reservation> findPendingReservationsChunk(
+      ReservationStatus status, LocalDateTime deadline, int chunkSize) {
+    QReservation reservation = QReservation.reservation;
+
+    return queryFactory
+        .selectFrom(reservation)
+        .where(reservation.status.eq(status), reservation.createdAt.before(deadline))
+        .orderBy(reservation.id.asc())
+        .limit(chunkSize)
+        .fetch();
+  }
+
   private BooleanExpression popupIdEq(Long popupId) {
     return popupId != null ? reservation.schedule.popup.id.eq(popupId) : null;
   }

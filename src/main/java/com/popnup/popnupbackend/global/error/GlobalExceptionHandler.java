@@ -1,6 +1,7 @@
 package com.popnup.popnupbackend.global.error;
 
 import com.popnup.popnupbackend.global.common.ApiResponse;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
@@ -27,5 +28,12 @@ public class GlobalExceptionHandler {
 
     return ResponseEntity.status(HttpStatus.CONFLICT)
         .body(ApiResponse.fail("LOCK_TIMEOUT", "요청이 많아 처리에 실패했습니다. 잠시 후 다시 시도해주세요."));
+  }
+
+  @ExceptionHandler(RequestNotPermitted.class)
+  public ResponseEntity<ApiResponse<Void>> handleRateLimitExceeded(RequestNotPermitted ex) {
+    log.warn("[GlobalExceptionHandler] Rate limit 초과로 요청 거절");
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+        .body(ApiResponse.fail("TOO_MANY_REQUESTS", "요청이 많아 처리할 수 없습니다. 잠시 후 다시 시도해주세요."));
   }
 }

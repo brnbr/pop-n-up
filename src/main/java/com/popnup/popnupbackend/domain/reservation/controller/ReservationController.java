@@ -27,16 +27,15 @@ public class ReservationController {
 
   private final ReservationService reservationService;
 
-  // 예약 생성
   @PostMapping("/reservations")
   public ResponseEntity<ApiResponse<ReservationCreateResponse>> createReservation(
       @AuthenticationPrincipal AuthUser authUser,
       @Valid @RequestBody ReservationCreateRequest request) {
     return ResponseEntity.ok(
-        ApiResponse.success(reservationService.book(authUser.getId(), request)));
+        ApiResponse.success(
+            reservationService.bookWithConditionalUpdate(authUser.getId(), request)));
   }
 
-  // qr 생성
   @GetMapping(value = "/reservations/{reservationId}/qr", produces = MediaType.IMAGE_PNG_VALUE)
   public ResponseEntity<byte[]> getReservationQr(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
@@ -47,14 +46,12 @@ public class ReservationController {
         .body(qrImageBytes);
   }
 
-  // 체크인
   @PostMapping("/admin/reservations/check-in")
   public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
       @Valid @RequestBody CheckInRequest request) {
     return ResponseEntity.ok(ApiResponse.success(reservationService.checkIn(request)));
   }
 
-  // 예약 취소
   @DeleteMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<Void>> deleteReservation(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
@@ -62,7 +59,6 @@ public class ReservationController {
     return ResponseEntity.ok(ApiResponse.success());
   }
 
-  // 예약 목록 전체 조회
   @GetMapping("/reservations")
   public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAll(
       @AuthenticationPrincipal AuthUser authUser) {
@@ -70,7 +66,6 @@ public class ReservationController {
         ApiResponse.success(reservationService.allReservations(authUser.getId())));
   }
 
-  // 예약 단 건 조회
   @GetMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<ReservationResponse>> getOne(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
@@ -78,7 +73,6 @@ public class ReservationController {
         ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
   }
 
-  // 관리자 - 예약 목록 전체 조회
   @GetMapping("/admin/reservations")
   public ResponseEntity<ApiResponse<List<AdminReservationResponse>>> getAllAdmin(
       @RequestParam Long popupId,
