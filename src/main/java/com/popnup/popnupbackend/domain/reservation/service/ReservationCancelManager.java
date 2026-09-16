@@ -24,25 +24,27 @@ public class ReservationCancelManager {
   private final ScheduleRepository scheduleRepository;
   private final ReservationRepository reservationRepository;
   private final ScheduleCapacityCache scheduleCapacityCache;
+  private final ReservationStatusReader reservationStatusReader;
 
   @Transactional
-  public void cancel(Long reservationId) {
-    processTerminalStatusChange(reservationId, ReservationStatus.CANCELED, RESTORABLE_STATUSES);
+  public boolean cancel(Long reservationId) {
+    return processTerminalStatusChange(
+        reservationId, ReservationStatus.CANCELED, RESTORABLE_STATUSES);
   }
 
   @Transactional
-  public void expirePaymentTimeout(Long reservationId) {
-    processTerminalStatusChange(
+  public boolean expirePaymentTimeout(Long reservationId) {
+    return processTerminalStatusChange(
         reservationId, ReservationStatus.EXPIRED, List.of(ReservationStatus.PENDING));
   }
 
   @Transactional
-  public void expireNoShow(Long reservationId) {
-    processTerminalStatusChange(
+  public boolean expireNoShow(Long reservationId) {
+    return processTerminalStatusChange(
         reservationId, ReservationStatus.EXPIRED, List.of(ReservationStatus.CONFIRMED));
   }
 
-  private void processTerminalStatusChange(
+  private boolean processTerminalStatusChange(
       Long reservationId, ReservationStatus newStatus, List<ReservationStatus> fromStatuses) {
 
     ScheduleAndPersonCount target =
@@ -53,8 +55,7 @@ public class ReservationCancelManager {
     int updatedRows = reservationRepository.tryUpdateStatus(reservationId, newStatus, fromStatuses);
 
     if (updatedRows == 0) {
-      handleFailedTransition(reservationId, fromStatuses);
-      return;
+      return handleFailedTransition(reservationId, fromStatuses);
     }
 
     int restoredRows =
@@ -71,20 +72,19 @@ public class ReservationCancelManager {
       throw ScheduleErrorCode.INVALID_CANCEL_COUNT.toException();
     }
 
-    // DB 복구가 성공했으므로 Redis 카운터도 동기화한다.
-    // 트랜잭션이 실제로 커밋된 뒤에만 실행되도록 지연시켜, 이후 롤백 시 Redis만 줄어든 채 남는
-    // 드리프트를 방지한다.
     scheduleCapacityCache.release(target.scheduleId(), target.personCount());
+    return true;
   }
 
-  private void handleFailedTransition(Long reservationId, List<ReservationStatus> fromStatuses) {
+  private boolean handleFailedTransition(Long reservationId, List<ReservationStatus> fromStatuses) {
+
     ReservationStatus current =
-        reservationRepository
-            .findStatusById(reservationId)
+        reservationStatusReader
+            .getFreshStatus(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
     if (current == ReservationStatus.CANCELED || current == ReservationStatus.EXPIRED) {
-      return;
+      return false; // 이미 다른 워커가 처리함 - 정상적인 no-op, 에러 아님
     }
 
     if (current == ReservationStatus.USED) {
