@@ -1,6 +1,7 @@
 package com.popnup.popnupbackend.domain.popup.service;
 
 import com.popnup.popnupbackend.domain.popup.dto.naver.NaverGeocodeResponse;
+import com.popnup.popnupbackend.domain.popup.dto.reponse.NearbyPopupResponse;
 import com.popnup.popnupbackend.domain.popup.dto.reponse.PopupListResponse;
 import com.popnup.popnupbackend.domain.popup.dto.reponse.PopupResponse;
 import com.popnup.popnupbackend.domain.popup.dto.request.PopupCreateRequest;
@@ -179,8 +180,8 @@ public class PopupService {
   // 내 위치 기준 반경 N km 이내 팝업스토어 거리순 조회
   // 내 위치 기준 반경 N km 이내 팝업스토어 거리순 조회
   @Transactional(readOnly = true)
-  public List<PopupResponse> getNearbyPopups(
-          Double latitude, Double longitude, Double radius) {
+  public List<NearbyPopupResponse> getNearbyPopups(
+      Double latitude, Double longitude, Double radius) {
 
     // 1. 기본 반경 방어 (null이거나 0 이하일 경우 기본 3.0km)
     double searchRadius = (radius != null && radius > 0) ? radius : 3.0;
@@ -189,8 +190,7 @@ public class PopupService {
     // 위도 1도 ≈ 111km
     // 경도 1도 ≈ 111km * cos(위도)
     double latDegreeDiff = searchRadius / 111.0;
-    double lngDegreeDiff =
-            searchRadius / (111.0 * Math.cos(Math.toRadians(latitude)));
+    double lngDegreeDiff = searchRadius / (111.0 * Math.cos(Math.toRadians(latitude)));
 
     double minLat = latitude - latDegreeDiff;
     double maxLat = latitude + latDegreeDiff;
@@ -199,41 +199,29 @@ public class PopupService {
 
     // 3. Bounding Box로 1차 후보 조회
     List<Popup> candidates =
-            popupRepository.findByLatitudeBetweenAndLongitudeBetween(
-                    minLat, maxLat, minLng, maxLng);
+        popupRepository.findByLatitudeBetweenAndLongitudeBetween(minLat, maxLat, minLng, maxLng);
 
     // 4. Haversine으로 실제 거리 계산 → 반경 필터링 → 거리순 정렬
     return candidates.stream()
-            .filter(
-                    popup ->
-                            popup.getLatitude() != null
-                                    && popup.getLongitude() != null)
-            .map(
-                    popup -> {
-                      double popupLat = popup.getLatitude().doubleValue();
-                      double popupLng = popup.getLongitude().doubleValue();
+        .filter(popup -> popup.getLatitude() != null && popup.getLongitude() != null)
+        .map(
+            popup -> {
+              double popupLat = popup.getLatitude().doubleValue();
+              double popupLng = popup.getLongitude().doubleValue();
 
-                      double distance =
-                              calculateDistanceInKm(
-                                      latitude,
-                                      longitude,
-                                      popupLat,
-                                      popupLng);
+              double distance = calculateDistanceInKm(latitude, longitude, popupLat, popupLng);
 
-                      return Map.entry(popup, distance);
-                    })
-            .filter(entry -> entry.getValue() <= searchRadius)
-            .sorted(Comparator.comparingDouble(Map.Entry::getValue))
-            .map(
-                    entry -> {
-                      double roundedDistance =
-                              Math.round(entry.getValue() * 100.0) / 100.0;
+              return Map.entry(popup, distance);
+            })
+        .filter(entry -> entry.getValue() <= searchRadius)
+        .sorted(Comparator.comparingDouble(Map.Entry::getValue))
+        .map(
+            entry -> {
+              double roundedDistance = Math.round(entry.getValue() * 100.0) / 100.0;
 
-                      return PopupResponse.from(
-                              entry.getKey(),
-                              roundedDistance);
-                    })
-            .toList();
+              return NearbyPopupResponse.from(entry.getKey(), roundedDistance);
+            })
+        .toList();
   }
 
   // 하버사인(Haversine) 공식: 두 위경도 좌표 간 직선거리(km) 계산
