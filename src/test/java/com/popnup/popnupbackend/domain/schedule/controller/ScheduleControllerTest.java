@@ -86,16 +86,19 @@ class ScheduleControllerTest {
     @DisplayName("성공: 유효한 요청 데이터 전달 시 201 Created와 생성된 스케줄 ID를 반환한다")
     void createSchedule_success() throws Exception {
       // given
+      LocalDate scheduleDate = LocalDate.now().plusDays(1);
+
       String jsonRequest =
           """
-              {
-                "popupId": 1,
-                "scheduleDate": "2026-09-20",
-                "startTime": "13:00:00",
-                "endTime": "14:00:00",
-                "maxCapacity": 30
-              }
-              """;
+                  {
+                    "popupId": 1,
+                    "scheduleDate": "%s",
+                    "startTime": "13:00:00",
+                    "endTime": "14:00:00",
+                    "maxCapacity": 30
+                  }
+                  """
+              .formatted(scheduleDate);
 
       given(scheduleService.createSchedule(any(ScheduleCreateRequest.class))).willReturn(100L);
 
@@ -167,17 +170,20 @@ class ScheduleControllerTest {
     @DisplayName("성공: 유효한 일괄 등록 요청 시 201 Created와 등록된 총 슬롯 개수를 반환한다")
     void createBatchSchedules_success() throws Exception {
       // given
+      LocalDate scheduleDate = LocalDate.now().plusDays(1);
+
       String jsonRequest =
           """
-              {
-                "popupId": 1,
-                "scheduleDate": "2026-09-20",
-                "openTime": "10:00:00",
-                "closeTime": "18:00:00",
-                "intervalMinutes": 60,
-                "maxCapacity": 15
-              }
-              """;
+                  {
+                    "popupId": 1,
+                    "scheduleDate": "%s",
+                    "openTime": "10:00:00",
+                    "closeTime": "18:00:00",
+                    "intervalMinutes": 60,
+                    "maxCapacity": 15
+                  }
+                  """
+              .formatted(scheduleDate);
 
       given(scheduleService.createBatchSchedules(any(ScheduleBatchCreateRequest.class)))
           .willReturn(48);
