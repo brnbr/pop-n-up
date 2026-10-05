@@ -32,4 +32,17 @@ public interface PopupRepository extends JpaRepository<Popup, Long> {
       @Param("maxLat") Double maxLat,
       @Param("minLng") Double minLng,
       @Param("maxLng") Double maxLng);
+
+  @Query(
+      """
+    SELECT p
+    FROM Popup p
+    WHERE p.latitude BETWEEN :minLat AND :maxLat
+      AND p.longitude BETWEEN :minLng AND :maxLng
+    """)
+  List<Popup> findNearbyCandidates(
+      @Param("minLat") Double minLat,
+      @Param("maxLat") Double maxLat,
+      @Param("minLng") Double minLng,
+      @Param("maxLng") Double maxLng);
 }

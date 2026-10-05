@@ -1,12 +1,9 @@
 package com.popnup.popnupbackend.domain.popup.dto.reponse;
 
-import com.popnup.popnupbackend.domain.popup.entity.ImageType;
 import com.popnup.popnupbackend.domain.popup.entity.Popup;
 import com.popnup.popnupbackend.domain.popup.entity.PopupCategory;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-
-import com.popnup.popnupbackend.domain.popup.entity.PopupImage;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -24,24 +21,18 @@ public class NearbyPopupResponse {
   private Double distance;
   private String thumbnailUrl;
 
-  public static NearbyPopupResponse from(Popup popup, Double distance) {
-      String thumbnailUrl =
-              popup.getImages().stream()
-                      .filter(image -> image.getImageType() == ImageType.THUMBNAIL)
-                      .findFirst()
-                      .map(PopupImage::getImageUrl)
-                      .orElse(null);
+  public static NearbyPopupResponse from(Popup popup, Double distance, String thumbnailUrl) {
 
-      return NearbyPopupResponse.builder()
-              .id(popup.getId())
-              .title(popup.getTitle())
-              .category(popup.getCategory())
-              .latitude(popup.getLatitude())
-              .longitude(popup.getLongitude())
-              .startDate(popup.getStartDate())
-              .endDate(popup.getEndDate())
-              .thumbnailUrl(thumbnailUrl)
-              .distance(distance)
-              .build();
+    return NearbyPopupResponse.builder()
+        .id(popup.getId())
+        .title(popup.getTitle())
+        .category(popup.getCategory())
+        .latitude(popup.getLatitude())
+        .longitude(popup.getLongitude())
+        .startDate(popup.getStartDate())
+        .endDate(popup.getEndDate())
+        .thumbnailUrl(thumbnailUrl)
+        .distance(distance)
+        .build();
   }
 }
