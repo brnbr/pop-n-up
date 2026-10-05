@@ -12,7 +12,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "popup")
+@Table(
+    name = "popup",
+    indexes = {@Index(name = "idx_popup_lat_lng", columnList = "latitude, longitude")})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Popup {
