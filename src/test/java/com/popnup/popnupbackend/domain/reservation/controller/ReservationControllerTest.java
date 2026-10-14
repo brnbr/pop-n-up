@@ -18,6 +18,7 @@ import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
 import com.popnup.popnupbackend.domain.member.enums.Role;
 import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
 import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
+import com.popnup.popnupbackend.domain.qrcode.service.CheckInService;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
@@ -60,6 +61,7 @@ class ReservationControllerTest {
 
   @InjectMocks private ReservationController reservationController;
   @Mock private ReservationService reservationService;
+  @Mock private CheckInService checkInService;
 
   private final AuthUser mockAuthUser = new AuthUser(1L, "test@popnup.com", "테스터", Role.ROLE_USER);
 
@@ -160,11 +162,12 @@ class ReservationControllerTest {
     @DisplayName("성공: 유효한 예약 번호로 체크인 시 200 OK와 체크인 결과를 반환한다")
     void checkIn_success() throws Exception {
       // given
-      CheckInRequest request = new CheckInRequest("R20260915TEST");
+      CheckInRequest request = new CheckInRequest();
+      ReflectionTestUtils.setField(request, "reservationNumber", "R20260915TEST");
 
       CheckInResponse response = new CheckInResponse(100L, "R20260915TEST", "김철수", 2);
 
-      given(reservationService.checkIn(any(CheckInRequest.class))).willReturn(response);
+      given(checkInService.checkIn(any(CheckInRequest.class))).willReturn(response);
 
       // when & then
       mockMvc
@@ -179,7 +182,7 @@ class ReservationControllerTest {
           .andExpect(jsonPath("$.content.memberName").value("김철수"))
           .andExpect(jsonPath("$.content.personCount").value(2));
 
-      verify(reservationService).checkIn(any(CheckInRequest.class));
+      verify(checkInService).checkIn(any(CheckInRequest.class));
     }
   }
 

@@ -11,8 +11,6 @@ import static org.mockito.Mockito.*;
 import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
-import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
-import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
 import com.popnup.popnupbackend.domain.qrcode.service.QrService;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
@@ -325,41 +323,6 @@ class ReservationServiceTest {
   }
 
   @Nested
-  @DisplayName("체크인 [checkIn]")
-  class CheckInTest {
-
-    @Test
-    @DisplayName("성공: 비관적 락으로 조회된 예약에 checkIn을 호출하고 응답 DTO를 반환한다")
-    void checkIn_success() {
-      // given
-      String reservationNumber = "R20260915TEST";
-      CheckInRequest request = new CheckInRequest(reservationNumber);
-
-      Member member = mock(Member.class);
-      given(member.getName()).willReturn("홍길동");
-
-      Reservation reservation = mock(Reservation.class);
-      given(reservation.getId()).willReturn(100L);
-      given(reservation.getReservationNumber()).willReturn(reservationNumber);
-      given(reservation.getMember()).willReturn(member);
-      given(reservation.getPersonCount()).willReturn(2);
-
-      given(reservationRepository.findByReservationNumberWithPessimisticLock(reservationNumber))
-          .willReturn(Optional.of(reservation));
-
-      // when
-      CheckInResponse response = reservationService.checkIn(request);
-
-      // then
-      verify(reservation).checkIn();
-      assertThat(response.getReservationId()).isEqualTo(100L);
-      assertThat(response.getReservationNumber()).isEqualTo(reservationNumber);
-      assertThat(response.getMemberName()).isEqualTo("홍길동");
-      assertThat(response.getPersonCount()).isEqualTo(2);
-    }
-  }
-
-  @Nested
   @DisplayName("예약 취소 [cancel]")
   class CancelTest {
 
@@ -611,40 +574,6 @@ class ReservationServiceTest {
 
       verify(reservation, never()).getSchedule();
       verify(reservationCancelManager).cancel(100L);
-    }
-
-    @Test
-    @DisplayName("R4 실패: 체크인 가능한 시간이 아니면(어제 QR, 종료된 회차) 체크인할 수 없다")
-    void checkIn_outsideWindow_rejected() {
-      Schedule schedule = mock(Schedule.class);
-      given(schedule.isCheckInAvailable(any(java.time.LocalDateTime.class))).willReturn(false);
-      Reservation reservation = mock(Reservation.class);
-      given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
-      given(reservation.getSchedule()).willReturn(schedule);
-      given(reservationRepository.findByReservationNumberWithPessimisticLock("R-OLD"))
-          .willReturn(Optional.of(reservation));
-
-      ServiceException e = failure(() -> reservationService.checkIn(new CheckInRequest("R-OLD")));
-
-      assertThat(e.getErrorCode()).isEqualTo(ReservationErrorCode.CHECK_IN_NOT_AVAILABLE_TIME);
-      verify(reservation, never()).checkIn();
-    }
-
-    @Test
-    @DisplayName("R4: 이미 사용한 예약은 시간 검사보다 상태 오류가 먼저 나오도록 시간을 검사하지 않는다")
-    void checkIn_alreadyUsed_statusErrorFirst() {
-      Reservation reservation = mock(Reservation.class);
-      given(reservation.getStatus()).willReturn(ReservationStatus.USED);
-      given(reservationRepository.findByReservationNumberWithPessimisticLock("R-USED"))
-          .willReturn(Optional.of(reservation));
-      doThrow(ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException())
-          .when(reservation)
-          .checkIn();
-
-      ServiceException e = failure(() -> reservationService.checkIn(new CheckInRequest("R-USED")));
-
-      assertThat(e.getErrorCode()).isEqualTo(ReservationErrorCode.ALREADY_PROCESSED_RESERVATION);
-      verify(reservation, never()).getSchedule();
     }
 
     @Test

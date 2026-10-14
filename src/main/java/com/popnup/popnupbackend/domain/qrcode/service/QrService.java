@@ -11,7 +11,6 @@ import com.popnup.popnupbackend.domain.qrcode.exception.QrErrorCode;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.EnumMap;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,19 +19,22 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class QrService {
 
-  private static final Integer width = 250;
-  private static final Integer height = 250;
+  private static final int QR_SIZE = 250;
   private static final String IMAGE_FORMAT = "PNG";
+
+  private static final Map<EncodeHintType, Object> HINTS =
+      Map.of(
+          EncodeHintType.CHARACTER_SET,
+          StandardCharsets.UTF_8.name(),
+          EncodeHintType.MARGIN,
+          1,
+          EncodeHintType.ERROR_CORRECTION,
+          ErrorCorrectionLevel.M);
 
   public byte[] generateQrCodeImage(String content) {
     try {
-      Map<EncodeHintType, Object> hints = new EnumMap<>(EncodeHintType.class);
-      hints.put(EncodeHintType.CHARACTER_SET, StandardCharsets.UTF_8.name());
-      hints.put(EncodeHintType.MARGIN, 1);
-      hints.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.M);
-
       BitMatrix bitMatrix =
-          new MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, width, height, hints);
+          new MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, QR_SIZE, QR_SIZE, HINTS);
 
       ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
       MatrixToImageWriter.writeToStream(bitMatrix, IMAGE_FORMAT, outputStream);

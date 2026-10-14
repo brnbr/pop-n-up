@@ -10,8 +10,4 @@ public class CheckInRequest {
 
   @NotBlank(message = "예약 번호를 입력하세요")
   private String reservationNumber;
-
-  public CheckInRequest(String reservationNumber) {
-    this.reservationNumber = reservationNumber;
-  }
 }

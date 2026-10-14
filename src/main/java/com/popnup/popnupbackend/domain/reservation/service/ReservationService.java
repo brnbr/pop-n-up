@@ -4,8 +4,6 @@ import com.fasterxml.uuid.Generators;
 import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
-import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
-import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
 import com.popnup.popnupbackend.domain.qrcode.service.QrService;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
@@ -144,8 +142,14 @@ public class ReservationService {
     reservation.confirm(paymentSucceeded);
   }
 
-  @Transactional(readOnly = true)
   public byte[] getReservationQrCode(Long memberId, Long reservationId) {
+    // 소유권·상태 검증은 읽기 전용 트랜잭션 안에서 하고, QR 이미지 생성(CPU 작업)은 DB 커넥션을 놓은 뒤에 한다.
+    String reservationNumber =
+        readOnlyTransaction().execute(status -> findQrTargetNumber(memberId, reservationId));
+    return qrService.generateQrCodeImage(reservationNumber);
+  }
+
+  private String findQrTargetNumber(Long memberId, Long reservationId) {
     Reservation reservation =
         reservationRepository
             .findById(reservationId)
@@ -159,23 +163,14 @@ public class ReservationService {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
     }
 
-    return qrService.generateQrCodeImage(reservation.getReservationNumber());
+    return reservation.getReservationNumber();
   }
 
-  @Transactional
-  public CheckInResponse checkIn(CheckInRequest request) {
-    Reservation reservation =
-        reservationRepository
-            .findByReservationNumberWithPessimisticLock(request.getReservationNumber())
-            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
-
-    if (reservation.getStatus() == ReservationStatus.CONFIRMED
-        && !reservation.getSchedule().isCheckInAvailable(KstTime.now())) {
-      throw ReservationErrorCode.CHECK_IN_NOT_AVAILABLE_TIME.toException();
-    }
-
-    reservation.checkIn();
-    return CheckInResponse.from(reservation);
+  private TransactionTemplate readOnlyTransaction() {
+    TransactionTemplate readOnly =
+        new TransactionTemplate(transactionTemplate.getTransactionManager());
+    readOnly.setReadOnly(true);
+    return readOnly;
   }
 
   @Transactional
