@@ -84,7 +84,7 @@ public class ReservationCancelManager {
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
     if (current == ReservationStatus.CANCELED || current == ReservationStatus.EXPIRED) {
-      return false; // 이미 다른 워커가 처리함 - 정상적인 no-op, 에러 아님
+      return false;
     }
 
     if (current == ReservationStatus.USED) {

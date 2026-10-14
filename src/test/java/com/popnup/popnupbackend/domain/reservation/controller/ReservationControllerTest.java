@@ -40,7 +40,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -221,7 +220,7 @@ class ReservationControllerTest {
               LocalDateTime.of(2026, 9, 15, 14, 0),
               2);
 
-      given(reservationService.allReservations(1L)).willReturn(List.of(response));
+      given(reservationService.allReservations(1L, 0, 20)).willReturn(List.of(response));
 
       // when & then
       mockMvc
@@ -232,7 +231,7 @@ class ReservationControllerTest {
           .andExpect(jsonPath("$.content[0].reservationNumber").value("R20260915TEST"))
           .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"));
 
-      verify(reservationService).allReservations(1L);
+      verify(reservationService).allReservations(1L, 0, 20);
     }
   }
 
@@ -293,7 +292,7 @@ class ReservationControllerTest {
               LocalTime.of(13, 0),
               LocalTime.of(14, 0));
 
-      given(reservationService.getAdminReservations(popupId, scheduleDate, status))
+      given(reservationService.getAdminReservations(popupId, scheduleDate, status, 0, 20))
           .willReturn(List.of(response));
 
       // when & then
@@ -309,7 +308,26 @@ class ReservationControllerTest {
           .andExpect(jsonPath("$.content[0].reservationId").value(100L))
           .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"));
 
-      verify(reservationService).getAdminReservations(popupId, scheduleDate, status);
+      verify(reservationService).getAdminReservations(popupId, scheduleDate, status, 0, 20);
+    }
+
+    @Test
+    @DisplayName("성공: page, size 파라미터를 서비스에 그대로 전달한다")
+    void getAllAdmin_pagingParams() throws Exception {
+      // given
+      given(reservationService.getAdminReservations(1L, null, null, 2, 50)).willReturn(List.of());
+
+      // when & then
+      mockMvc
+          .perform(
+              get("/admin/reservations")
+                  .param("popupId", "1")
+                  .param("page", "2")
+                  .param("size", "50"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.success").value(true));
+
+      verify(reservationService).getAdminReservations(1L, null, null, 2, 50);
     }
   }
 }

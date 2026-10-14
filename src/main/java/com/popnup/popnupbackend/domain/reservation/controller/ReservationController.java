@@ -18,6 +18,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.annotation.Secured;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,6 +47,7 @@ public class ReservationController {
         .body(qrImageBytes);
   }
 
+  @Secured("ROLE_ADMIN")
   @PostMapping("/admin/reservations/check-in")
   public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
       @Valid @RequestBody CheckInRequest request) {
@@ -61,9 +63,11 @@ public class ReservationController {
 
   @GetMapping("/reservations")
   public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAll(
-      @AuthenticationPrincipal AuthUser authUser) {
+      @AuthenticationPrincipal AuthUser authUser,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size) {
     return ResponseEntity.ok(
-        ApiResponse.success(reservationService.allReservations(authUser.getId())));
+        ApiResponse.success(reservationService.allReservations(authUser.getId(), page, size)));
   }
 
   @GetMapping("/reservations/{reservationId}")
@@ -73,14 +77,17 @@ public class ReservationController {
         ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
   }
 
+  @Secured("ROLE_ADMIN")
   @GetMapping("/admin/reservations")
   public ResponseEntity<ApiResponse<List<AdminReservationResponse>>> getAllAdmin(
       @RequestParam Long popupId,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
           LocalDate scheduleDate,
-      @RequestParam(required = false) ReservationStatus status) {
+      @RequestParam(required = false) ReservationStatus status,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size) {
     return ResponseEntity.ok(
         ApiResponse.success(
-            reservationService.getAdminReservations(popupId, scheduleDate, status)));
+            reservationService.getAdminReservations(popupId, scheduleDate, status, page, size)));
   }
 }

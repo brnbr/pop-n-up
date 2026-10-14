@@ -12,6 +12,7 @@ import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.querydsl.jpa.impl.JPAUpdateClause;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,6 +20,7 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 
 @RequiredArgsConstructor
 public class ReservationRepositoryCustomImpl implements ReservationRepositoryCustom {
@@ -26,6 +28,12 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   private static final int SKIP_LOCKED = -2;
 
   private final JPAQueryFactory queryFactory;
+
+  @Value("${reservation.query.admin-fetch-join:true}")
+  private boolean adminFetchJoin;
+
+  @Value("${reservation.query.member-list-fetch-join:false}")
+  private boolean memberListFetchJoin;
 
   private JPAQuery<Reservation> selectReservationWithDetails() {
     return queryFactory
@@ -39,10 +47,14 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   }
 
   @Override
-  public List<Reservation> getAllReservation(Long memberId) {
-    return selectReservationWithDetails()
+  public List<Reservation> getAllReservation(Long memberId, int page, int size) {
+    JPAQuery<Reservation> query =
+        memberListFetchJoin ? selectReservationWithDetails() : queryFactory.selectFrom(reservation);
+    return query
         .where(reservation.member.id.eq(memberId))
-        .orderBy(reservation.createdAt.desc())
+        .orderBy(reservation.createdAt.desc(), reservation.id.desc())
+        .offset((long) page * size)
+        .limit(size)
         .fetch();
   }
 
@@ -62,16 +74,16 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
     return fetchOne != null;
   }
 
-  // dsl 적용 후 수정
   @Override
   public List<Reservation> findAdminReservations(
-      Long popupId, LocalDate scheduleDate, ReservationStatus status) {
-    return selectReservationWithDetails()
+      Long popupId, LocalDate scheduleDate, ReservationStatus status, int page, int size) {
+    JPAQuery<Reservation> query =
+        adminFetchJoin ? selectReservationWithDetails() : queryFactory.selectFrom(reservation);
+    return query
         .where(popupIdEq(popupId), scheduleDateEq(scheduleDate), statusEq(status))
-        .orderBy(
-            reservation.schedule.scheduleDate.asc(),
-            reservation.schedule.startTime.asc(),
-            reservation.id.asc())
+        .orderBy(reservation.schedule.scheduleDate.asc(), reservation.schedule.startTime.asc())
+        .offset((long) page * size)
+        .limit(size)
         .fetch();
   }
 
@@ -105,10 +117,15 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   @Override
   public int tryUpdateStatus(
       Long reservationId, ReservationStatus newStatus, List<ReservationStatus> fromStatuses) {
+    boolean releasesActiveSlot =
+        newStatus == ReservationStatus.CANCELED || newStatus == ReservationStatus.EXPIRED;
+
+    JPAUpdateClause update = queryFactory.update(reservation).set(reservation.status, newStatus);
+    if (releasesActiveSlot) {
+      update.setNull(reservation.activeMemberId);
+    }
     long affectedRows =
-        queryFactory
-            .update(reservation)
-            .set(reservation.status, newStatus)
+        update
             .where(reservation.id.eq(reservationId), reservation.status.in(fromStatuses))
             .execute();
 

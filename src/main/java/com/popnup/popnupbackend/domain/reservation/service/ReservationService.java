@@ -19,20 +19,26 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
+import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ReservationService {
+
+  private static final int MAX_PERSON_COUNT = 10;
+  private static final int MAX_PAGE_SIZE = 100;
 
   private final ReservationRepository reservationRepository;
   private final ScheduleRepository scheduleRepository;
@@ -40,11 +46,29 @@ public class ReservationService {
   private final QrService qrService;
   private final ReservationCancelManager reservationCancelManager;
   private final ScheduleCapacityCache scheduleCapacityCache;
+  private final TransactionTemplate transactionTemplate;
+
+  @Value("${reservation.booking.sold-out-precheck:true}")
+  private boolean soldOutPrecheck;
 
   @RateLimiter(name = "reservationBooking")
-  @Transactional
   public ReservationCreateResponse bookWithConditionalUpdate(
       Long memberId, ReservationCreateRequest request) {
+    if (request.getPersonCount() == null
+        || request.getPersonCount() < 1
+        || request.getPersonCount() > MAX_PERSON_COUNT) {
+      throw ReservationErrorCode.INVALID_PERSON_COUNT.toException();
+    }
+
+    if (soldOutPrecheck
+        && scheduleCapacityCache.isSoldOut(request.getScheduleId(), request.getPersonCount())) {
+      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
+    }
+
+    return transactionTemplate.execute(status -> book(memberId, request));
+  }
+
+  private ReservationCreateResponse book(Long memberId, ReservationCreateRequest request) {
     Member member =
         memberRepository
             .findById(memberId)
@@ -75,7 +99,7 @@ public class ReservationService {
           scheduleRepository
               .findByIdForValidation(request.getScheduleId())
               .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
-      schedule.validateBookable(LocalDateTime.now());
+      schedule.validateBookable(KstTime.now());
 
       int affectedRows =
           scheduleRepository.tryIncreaseCapacity(request.getScheduleId(), request.getPersonCount());
@@ -86,20 +110,30 @@ public class ReservationService {
       Reservation reservation =
           Reservation.createReservation(
               reservationNumber, member, schedule, request.getPersonCount());
-      Reservation savedReservation = reservationRepository.save(reservation);
+      Reservation savedReservation;
+      try {
+        savedReservation = reservationRepository.save(reservation);
+      } catch (DataIntegrityViolationException e) {
+        if (isActiveMemberViolation(e)) {
+          throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
+        }
+        throw e;
+      }
 
       return ReservationCreateResponse.from(
           savedReservation.getId(), savedReservation.getReservationNumber());
 
     } catch (Exception e) {
-      // Redis 필터는 통과했지만 DB 단계(정원 초과, 비활성 스케줄, 팝업 미오픈 등 사유 불문)에서
-      // 예약이 최종 실패한 모든 경우, Redis 카운터를 되돌려 다음 요청들의 판단 정확도를 유지
       scheduleCapacityCache.compensate(request.getScheduleId(), request.getPersonCount());
       throw e;
     }
   }
 
-  // 결제 시 예약 확정
+  private boolean isActiveMemberViolation(DataIntegrityViolationException e) {
+    String message = e.getMostSpecificCause().getMessage();
+    return message != null && message.toLowerCase().contains(Reservation.UK_ACTIVE_MEMBER);
+  }
+
   @Transactional
   public void confirmReservation(Long reservationId, boolean paymentSucceeded) {
     Reservation reservation =
@@ -110,7 +144,6 @@ public class ReservationService {
     reservation.confirm(paymentSucceeded);
   }
 
-  // QR 생성
   @Transactional(readOnly = true)
   public byte[] getReservationQrCode(Long memberId, Long reservationId) {
     Reservation reservation =
@@ -129,7 +162,6 @@ public class ReservationService {
     return qrService.generateQrCodeImage(reservation.getReservationNumber());
   }
 
-  // 체크인
   @Transactional
   public CheckInResponse checkIn(CheckInRequest request) {
     Reservation reservation =
@@ -137,11 +169,15 @@ public class ReservationService {
             .findByReservationNumberWithPessimisticLock(request.getReservationNumber())
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
+    if (reservation.getStatus() == ReservationStatus.CONFIRMED
+        && !reservation.getSchedule().isCheckInAvailable(KstTime.now())) {
+      throw ReservationErrorCode.CHECK_IN_NOT_AVAILABLE_TIME.toException();
+    }
+
     reservation.checkIn();
     return CheckInResponse.from(reservation);
   }
 
-  // 예약 취소
   @Transactional
   public void cancel(Long memberId, Long reservationId) {
     Reservation reservation =
@@ -153,18 +189,23 @@ public class ReservationService {
       throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
     }
 
+    if (reservation.getStatus() == ReservationStatus.CONFIRMED
+        && reservation.getSchedule().isAlreadyStarted(KstTime.now())) {
+      throw ReservationErrorCode.CANCEL_NOT_ALLOWED_AFTER_START.toException();
+    }
+
     reservationCancelManager.cancel(reservationId);
   }
 
-  // 예약 목록 전체 조회
   @Transactional(readOnly = true)
-  public List<ReservationResponse> allReservations(Long memberId) {
-    return reservationRepository.getAllReservation(memberId).stream()
+  public List<ReservationResponse> allReservations(Long memberId, int page, int size) {
+    int safePage = Math.max(page, 0);
+    int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+    return reservationRepository.getAllReservation(memberId, safePage, safeSize).stream()
         .map(ReservationResponse::from)
         .toList();
   }
 
-  // 예약 단 건 조회
   @Transactional(readOnly = true)
   public ReservationResponse oneReservation(Long memberId, Long reservationId) {
     return reservationRepository
@@ -173,11 +214,14 @@ public class ReservationService {
         .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
   }
 
-  // 관리자 - 예약 목록 전체 조회
   @Transactional(readOnly = true)
   public List<AdminReservationResponse> getAdminReservations(
-      Long popupId, LocalDate scheduleDate, ReservationStatus status) {
-    return reservationRepository.findAdminReservations(popupId, scheduleDate, status).stream()
+      Long popupId, LocalDate scheduleDate, ReservationStatus status, int page, int size) {
+    int safePage = Math.max(page, 0);
+    int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+    return reservationRepository
+        .findAdminReservations(popupId, scheduleDate, status, safePage, safeSize)
+        .stream()
         .map(AdminReservationResponse::from)
         .toList();
   }

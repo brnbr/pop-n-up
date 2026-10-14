@@ -10,12 +10,12 @@ import java.util.Optional;
 
 public interface ReservationRepositoryCustom {
 
-  List<Reservation> getAllReservation(Long memberId);
+  List<Reservation> getAllReservation(Long memberId, int page, int size);
 
   boolean hasActiveReservation(Long scheduleId, Long memberId);
 
   List<Reservation> findAdminReservations(
-      Long popupId, LocalDate scheduleDate, ReservationStatus status);
+      Long popupId, LocalDate scheduleDate, ReservationStatus status, int page, int size);
 
   Optional<Reservation> findByReservationNumberWithPessimisticLock(String reservationNumber);
 

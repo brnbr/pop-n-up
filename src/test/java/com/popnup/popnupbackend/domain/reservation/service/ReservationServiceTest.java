@@ -37,9 +37,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(
     properties = {
@@ -56,6 +59,10 @@ class ReservationServiceTest {
   @Mock private QrService qrService;
   @Mock private ReservationCancelManager reservationCancelManager;
   @Mock private ScheduleCapacityCache scheduleCapacityCache;
+
+  @Spy
+  private TransactionTemplate transactionTemplate =
+      new TransactionTemplate(mock(PlatformTransactionManager.class));
 
   @Nested
   @DisplayName("조건부 업데이트 기반 예약 생성 [bookWithConditionalUpdate]")
@@ -105,6 +112,8 @@ class ReservationServiceTest {
       // given
       Long memberId = 1L;
       ReservationCreateRequest request = new ReservationCreateRequest();
+      // 운영에서는 @NotNull 때문에 personCount 없는 요청이 서비스까지 오지 않으므로 유효한 요청으로 만든다
+      ReflectionTestUtils.setField(request, "personCount", 1);
       given(memberRepository.findById(memberId)).willReturn(Optional.empty());
 
       // when & then
@@ -410,14 +419,28 @@ class ReservationServiceTest {
       given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
       given(reservation.getPersonCount()).willReturn(2);
 
-      given(reservationRepository.getAllReservation(memberId)).willReturn(List.of(reservation));
+      given(reservationRepository.getAllReservation(memberId, 0, 20))
+          .willReturn(List.of(reservation));
 
       // when
-      List<ReservationResponse> results = reservationService.allReservations(memberId);
+      List<ReservationResponse> results = reservationService.allReservations(memberId, 0, 20);
 
       // then
       assertThat(results).hasSize(1);
       assertThat(results.get(0).getReservationId()).isEqualTo(10L);
+    }
+
+    @Test
+    @DisplayName("내 예약 목록: 음수 page는 0으로, 너무 큰 size는 100으로, 0 이하 size는 1로 보정한다")
+    void allReservations_pageParamsClamped() {
+      given(reservationRepository.getAllReservation(1L, 0, 100)).willReturn(List.of());
+      given(reservationRepository.getAllReservation(1L, 3, 1)).willReturn(List.of());
+
+      reservationService.allReservations(1L, -5, 100000);
+      reservationService.allReservations(1L, 3, 0);
+
+      verify(reservationRepository).getAllReservation(1L, 0, 100);
+      verify(reservationRepository).getAllReservation(1L, 3, 1);
     }
 
     @Test
@@ -496,17 +519,238 @@ class ReservationServiceTest {
       given(member.getId()).willReturn(10L);
       given(member.getName()).willReturn("관리자확인");
 
-      given(reservationRepository.findAdminReservations(popupId, scheduleDate, status))
+      given(reservationRepository.findAdminReservations(popupId, scheduleDate, status, 0, 20))
           .willReturn(List.of(reservation));
 
       // when
       List<AdminReservationResponse> responses =
-          reservationService.getAdminReservations(popupId, scheduleDate, status);
+          reservationService.getAdminReservations(popupId, scheduleDate, status, 0, 20);
 
       // then
       assertThat(responses).hasSize(1);
       assertThat(responses.get(0).getReservationId()).isEqualTo(100L);
       assertThat(responses.get(0).getReservationNumber()).isEqualTo("R20260915ADMIN");
+    }
+
+    @Test
+    @DisplayName("성공: size가 상한(100)을 넘거나 1 미만이고 page가 음수여도 허용 범위로 보정해 조회한다")
+    void getAdminReservations_clampsPagingParams() {
+      // given
+      given(reservationRepository.findAdminReservations(1L, null, null, 0, 100))
+          .willReturn(List.of());
+      given(reservationRepository.findAdminReservations(1L, null, null, 3, 1))
+          .willReturn(List.of());
+
+      // when
+      reservationService.getAdminReservations(1L, null, null, -5, 100000);
+      reservationService.getAdminReservations(1L, null, null, 3, 0);
+
+      // then
+      verify(reservationRepository).findAdminReservations(1L, null, null, 0, 100);
+      verify(reservationRepository).findAdminReservations(1L, null, null, 3, 1);
+    }
+  }
+
+  @Nested
+  @DisplayName("정책 검증 [R3 취소 시점 · R4 체크인 시간 · R5 인원 상한]")
+  class PolicyTest {
+
+    private Reservation reservationWith(ReservationStatus status, Schedule schedule) {
+      Reservation reservation = mock(Reservation.class);
+      given(reservation.isOwnedBy(1L)).willReturn(true);
+      given(reservation.getStatus()).willReturn(status);
+      if (schedule != null) {
+        given(reservation.getSchedule()).willReturn(schedule);
+      }
+      return reservation;
+    }
+
+    private ServiceException failure(Runnable action) {
+      try {
+        action.run();
+      } catch (ServiceException e) {
+        return e;
+      }
+      throw new AssertionError("ServiceException이 발생해야 합니다");
+    }
+
+    @Test
+    @DisplayName("R3 실패: 이미 시작된 회차의 결제 완료 예약은 취소할 수 없다")
+    void cancel_confirmedAfterStart_rejected() {
+      Schedule schedule = mock(Schedule.class);
+      given(schedule.isAlreadyStarted(any(java.time.LocalDateTime.class))).willReturn(true);
+      Reservation reservation = reservationWith(ReservationStatus.CONFIRMED, schedule);
+      given(reservationRepository.findById(100L)).willReturn(Optional.of(reservation));
+
+      ServiceException e = failure(() -> reservationService.cancel(1L, 100L));
+
+      assertThat(e.getErrorCode()).isEqualTo(ReservationErrorCode.CANCEL_NOT_ALLOWED_AFTER_START);
+      verify(reservationCancelManager, never()).cancel(anyLong());
+    }
+
+    @Test
+    @DisplayName("R3 성공: 시작 전 회차의 결제 완료 예약은 취소할 수 있다")
+    void cancel_confirmedBeforeStart_allowed() {
+      Schedule schedule = mock(Schedule.class);
+      given(schedule.isAlreadyStarted(any(java.time.LocalDateTime.class))).willReturn(false);
+      Reservation reservation = reservationWith(ReservationStatus.CONFIRMED, schedule);
+      given(reservationRepository.findById(100L)).willReturn(Optional.of(reservation));
+
+      reservationService.cancel(1L, 100L);
+
+      verify(reservationCancelManager).cancel(100L);
+    }
+
+    @Test
+    @DisplayName("R3 성공: 결제 대기(PENDING) 예약은 회차가 시작된 뒤에도 취소할 수 있다 (좌석 반환)")
+    void cancel_pendingAfterStart_allowed() {
+      Reservation reservation = reservationWith(ReservationStatus.PENDING, null);
+      given(reservationRepository.findById(100L)).willReturn(Optional.of(reservation));
+
+      reservationService.cancel(1L, 100L);
+
+      verify(reservation, never()).getSchedule();
+      verify(reservationCancelManager).cancel(100L);
+    }
+
+    @Test
+    @DisplayName("R4 실패: 체크인 가능한 시간이 아니면(어제 QR, 종료된 회차) 체크인할 수 없다")
+    void checkIn_outsideWindow_rejected() {
+      Schedule schedule = mock(Schedule.class);
+      given(schedule.isCheckInAvailable(any(java.time.LocalDateTime.class))).willReturn(false);
+      Reservation reservation = mock(Reservation.class);
+      given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
+      given(reservation.getSchedule()).willReturn(schedule);
+      given(reservationRepository.findByReservationNumberWithPessimisticLock("R-OLD"))
+          .willReturn(Optional.of(reservation));
+
+      ServiceException e = failure(() -> reservationService.checkIn(new CheckInRequest("R-OLD")));
+
+      assertThat(e.getErrorCode()).isEqualTo(ReservationErrorCode.CHECK_IN_NOT_AVAILABLE_TIME);
+      verify(reservation, never()).checkIn();
+    }
+
+    @Test
+    @DisplayName("R4: 이미 사용한 예약은 시간 검사보다 상태 오류가 먼저 나오도록 시간을 검사하지 않는다")
+    void checkIn_alreadyUsed_statusErrorFirst() {
+      Reservation reservation = mock(Reservation.class);
+      given(reservation.getStatus()).willReturn(ReservationStatus.USED);
+      given(reservationRepository.findByReservationNumberWithPessimisticLock("R-USED"))
+          .willReturn(Optional.of(reservation));
+      doThrow(ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException())
+          .when(reservation)
+          .checkIn();
+
+      ServiceException e = failure(() -> reservationService.checkIn(new CheckInRequest("R-USED")));
+
+      assertThat(e.getErrorCode()).isEqualTo(ReservationErrorCode.ALREADY_PROCESSED_RESERVATION);
+      verify(reservation, never()).getSchedule();
+    }
+
+    @Test
+    @DisplayName("R5 실패: 예약 인원이 상한(10명)을 넘으면 DB·Redis를 건드리지 않고 거절한다")
+    void book_personCountOverLimit_rejected() {
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      ReflectionTestUtils.setField(request, "scheduleId", 1L);
+      ReflectionTestUtils.setField(request, "personCount", 11);
+
+      ServiceException e = failure(() -> reservationService.bookWithConditionalUpdate(1L, request));
+
+      assertThat(e.getErrorCode()).isEqualTo(ReservationErrorCode.INVALID_PERSON_COUNT);
+      verifyNoInteractions(memberRepository, scheduleCapacityCache, scheduleRepository);
+    }
+
+    @Test
+    @DisplayName("R5 경계: 10명은 인원 검증을 통과해 다음 단계(회원 조회)로 진행한다")
+    void book_personCountAtLimit_passesValidation() {
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      ReflectionTestUtils.setField(request, "scheduleId", 1L);
+      ReflectionTestUtils.setField(request, "personCount", 10);
+      given(memberRepository.findById(1L)).willReturn(Optional.empty());
+
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(1L, request))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isNotEqualTo(ReservationErrorCode.INVALID_PERSON_COUNT));
+      verify(memberRepository).findById(1L);
+    }
+  }
+
+  @Nested
+  @DisplayName("정원 마감 선확인 (트랜잭션 시작 전 거절)")
+  class SoldOutPrecheckTest {
+
+    private ReservationCreateRequest request(int personCount) {
+      ReservationCreateRequest request = new ReservationCreateRequest();
+      ReflectionTestUtils.setField(request, "scheduleId", 1L);
+      ReflectionTestUtils.setField(request, "personCount", personCount);
+      return request;
+    }
+
+    @Test
+    @DisplayName("마감이면 트랜잭션을 시작하기 전에 정원 초과로 거절한다 (DB 커넥션·쿼리 없음)")
+    void soldOut_rejectedBeforeTransaction() {
+      ReflectionTestUtils.setField(reservationService, "soldOutPrecheck", true);
+      given(scheduleCapacityCache.isSoldOut(1L, 1)).willReturn(true);
+
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(1L, request(1)))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED));
+
+      // 트랜잭션이 시작되지 않았으므로 어떤 DB 접근도, Redis 카운터 증가도 없다
+      verify(transactionTemplate, never()).execute(any());
+      verifyNoInteractions(memberRepository, reservationRepository, scheduleRepository);
+      verify(scheduleCapacityCache, never()).tryReserve(anyLong(), anyInt());
+    }
+
+    @Test
+    @DisplayName("마감이 아니면 기존처럼 트랜잭션 안에서 처리를 이어간다")
+    void notSoldOut_proceedsInTransaction() {
+      ReflectionTestUtils.setField(reservationService, "soldOutPrecheck", true);
+      given(scheduleCapacityCache.isSoldOut(1L, 1)).willReturn(false);
+      given(memberRepository.findById(1L)).willReturn(Optional.empty());
+
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(1L, request(1)))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND));
+
+      verify(transactionTemplate).execute(any());
+      verify(memberRepository).findById(1L);
+    }
+
+    @Test
+    @DisplayName("선확인을 끄면(토글 false) Redis 선확인을 호출하지 않는다 (개선 전 재현용)")
+    void precheckDisabled_neverCallsRedisPrecheck() {
+      ReflectionTestUtils.setField(reservationService, "soldOutPrecheck", false);
+      given(memberRepository.findById(1L)).willReturn(Optional.empty());
+
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(1L, request(1)))
+          .isInstanceOf(ServiceException.class);
+
+      verify(scheduleCapacityCache, never()).isSoldOut(anyLong(), anyInt());
+    }
+
+    @Test
+    @DisplayName("인원 검증이 선확인보다 먼저다: 잘못된 인원은 Redis도 조회하지 않고 거절한다")
+    void invalidPersonCount_rejectedBeforePrecheck() {
+      ReflectionTestUtils.setField(reservationService, "soldOutPrecheck", true);
+
+      assertThatThrownBy(() -> reservationService.bookWithConditionalUpdate(1L, request(11)))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ReservationErrorCode.INVALID_PERSON_COUNT));
+
+      verify(scheduleCapacityCache, never()).isSoldOut(anyLong(), anyInt());
     }
   }
 }

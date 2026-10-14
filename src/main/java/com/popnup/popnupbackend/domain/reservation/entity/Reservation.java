@@ -14,11 +14,19 @@ import lombok.NoArgsConstructor;
 @Getter
 @Table(
     name = "reservations",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = Reservation.UK_ACTIVE_MEMBER,
+          columnNames = {"schedule_id", "active_member_id"})
+    },
     indexes = {
-      @Index(name = "idx_reservation_status_created_at", columnList = "status, created_at")
+      @Index(name = "idx_reservation_status_created_at", columnList = "status, created_at"),
+      @Index(name = "idx_reservation_schedule", columnList = "schedule_id")
     })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Reservation extends BaseEntity {
+
+  public static final String UK_ACTIVE_MEMBER = "uk_reservation_active_member";
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -42,6 +50,9 @@ public class Reservation extends BaseEntity {
   @Column(nullable = false, length = 30)
   private ReservationStatus status;
 
+  @Column(name = "active_member_id")
+  private Long activeMemberId;
+
   private Reservation(
       String reservationNumber,
       Member member,
@@ -53,6 +64,7 @@ public class Reservation extends BaseEntity {
     this.schedule = schedule;
     this.personCount = personCount;
     this.status = status;
+    this.activeMemberId = member.getId();
   }
 
   public static Reservation createReservation(
@@ -73,7 +85,6 @@ public class Reservation extends BaseEntity {
     this.status = ReservationStatus.CONFIRMED;
   }
 
-  // qr 체크인
   public void checkIn() {
     if (this.status == ReservationStatus.USED) {
       throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
@@ -85,7 +96,6 @@ public class Reservation extends BaseEntity {
     this.status = ReservationStatus.USED;
   }
 
-  // 예약 취소
   public void cancel() {
     if (this.status == ReservationStatus.USED) {
       throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
@@ -100,6 +110,7 @@ public class Reservation extends BaseEntity {
     }
 
     this.status = ReservationStatus.CANCELED;
+    this.activeMemberId = null;
   }
 
   public boolean isOwnedBy(Long memberId) {
@@ -108,22 +119,5 @@ public class Reservation extends BaseEntity {
     }
 
     return memberId.equals(this.member.getId());
-  }
-
-  // 노쇼 자동 만료 분리, paymenttimeout 경우와 noshow 경우
-  public void expirePaymentTimeout() {
-    if (this.status != ReservationStatus.PENDING) {
-      return;
-    }
-
-    this.status = ReservationStatus.EXPIRED;
-  }
-
-  public void expireNoShow() {
-    if (this.status != ReservationStatus.CONFIRMED) {
-      return;
-    }
-
-    this.status = ReservationStatus.EXPIRED;
   }
 }

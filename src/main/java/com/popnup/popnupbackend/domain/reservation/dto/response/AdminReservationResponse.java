@@ -11,24 +11,20 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AdminReservationResponse {
 
-  // 팝업 정보
   private final Long popupId;
   private final String popupTitle;
 
-  // 예약 정보
   private final Long reservationId;
   private final String reservationNumber;
   private final Integer personCount;
   private final ReservationStatus status;
 
-  // 예약자 정보
   private final Long memberId;
   private final String memberName;
 
-  // 일자별 정보
-  private final LocalDate scheduledDate; // 특정 일자 명단
-  private final LocalTime startTime; // 이용 시간대 구분용
-  private final LocalTime endTime; // 이용 시간대 구분용
+  private final LocalDate scheduledDate;
+  private final LocalTime startTime;
+  private final LocalTime endTime;
 
   public static AdminReservationResponse from(Reservation reservation) {
     return new AdminReservationResponse(
