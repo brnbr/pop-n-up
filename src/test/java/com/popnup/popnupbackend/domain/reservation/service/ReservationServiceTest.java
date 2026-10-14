@@ -59,6 +59,9 @@ class ReservationServiceTest {
   @Mock private ScheduleCapacityCache scheduleCapacityCache;
 
   @Spy
+  private ReservationNumberGenerator reservationNumberGenerator = new ReservationNumberGenerator();
+
+  @Spy
   private TransactionTemplate transactionTemplate =
       new TransactionTemplate(mock(PlatformTransactionManager.class));
 

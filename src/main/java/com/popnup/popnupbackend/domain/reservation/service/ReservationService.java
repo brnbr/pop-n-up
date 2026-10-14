@@ -1,6 +1,5 @@
 package com.popnup.popnupbackend.domain.reservation.service;
 
-import com.fasterxml.uuid.Generators;
 import com.popnup.popnupbackend.domain.member.entity.Member;
 import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
@@ -20,7 +19,6 @@ import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
 import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +42,7 @@ public class ReservationService {
   private final QrService qrService;
   private final ReservationCancelManager reservationCancelManager;
   private final ScheduleCapacityCache scheduleCapacityCache;
+  private final ReservationNumberGenerator reservationNumberGenerator;
   private final TransactionTemplate transactionTemplate;
 
   @Value("${reservation.booking.sold-out-precheck:true}")
@@ -67,62 +66,69 @@ public class ReservationService {
   }
 
   private ReservationCreateResponse book(Long memberId, ReservationCreateRequest request) {
-    Member member =
-        memberRepository
-            .findById(memberId)
-            .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
+    Member member = findMember(memberId);
+    validateNoActiveReservation(request.getScheduleId(), memberId);
+    reserveInRedis(request);
 
-    if (reservationRepository.hasActiveReservation(request.getScheduleId(), memberId)) {
+    try {
+      Reservation reservation = createReservation(member, request);
+      return ReservationCreateResponse.from(
+          reservation.getId(), reservation.getReservationNumber());
+    } catch (Exception e) {
+      scheduleCapacityCache.compensate(request.getScheduleId(), request.getPersonCount());
+      throw e;
+    }
+  }
+
+  private Member findMember(Long memberId) {
+    return memberRepository
+        .findById(memberId)
+        .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
+  }
+
+  private void validateNoActiveReservation(Long scheduleId, Long memberId) {
+    if (reservationRepository.hasActiveReservation(scheduleId, memberId)) {
       throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
     }
+  }
 
+  private void reserveInRedis(ReservationCreateRequest request) {
     boolean passed =
         scheduleCapacityCache.tryReserve(request.getScheduleId(), request.getPersonCount());
     if (!passed) {
       throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
     }
+  }
 
+  private Reservation createReservation(Member member, ReservationCreateRequest request) {
+    Schedule schedule =
+        scheduleRepository
+            .findByIdForValidation(request.getScheduleId())
+            .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
+    schedule.validateBookable(KstTime.now());
+
+    increaseCapacity(request);
+
+    return saveReservation(
+        Reservation.createReservation(
+            reservationNumberGenerator.generate(), member, schedule, request.getPersonCount()));
+  }
+
+  private void increaseCapacity(ReservationCreateRequest request) {
+    int affectedRows =
+        scheduleRepository.tryIncreaseCapacity(request.getScheduleId(), request.getPersonCount());
+    if (affectedRows == 0) {
+      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
+    }
+  }
+
+  private Reservation saveReservation(Reservation reservation) {
     try {
-      String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-      String timeUUID =
-          Generators.timeBasedGenerator()
-              .generate()
-              .toString()
-              .replace("-", "")
-              .substring(0, 8)
-              .toUpperCase();
-      String reservationNumber = "R" + today + timeUUID;
-
-      Schedule schedule =
-          scheduleRepository
-              .findByIdForValidation(request.getScheduleId())
-              .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
-      schedule.validateBookable(KstTime.now());
-
-      int affectedRows =
-          scheduleRepository.tryIncreaseCapacity(request.getScheduleId(), request.getPersonCount());
-      if (affectedRows == 0) {
-        throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
+      return reservationRepository.save(reservation);
+    } catch (DataIntegrityViolationException e) {
+      if (isActiveMemberViolation(e)) {
+        throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
       }
-
-      Reservation reservation =
-          Reservation.createReservation(
-              reservationNumber, member, schedule, request.getPersonCount());
-      Reservation savedReservation;
-      try {
-        savedReservation = reservationRepository.save(reservation);
-      } catch (DataIntegrityViolationException e) {
-        if (isActiveMemberViolation(e)) {
-          throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
-        }
-        throw e;
-      }
-
-      return ReservationCreateResponse.from(
-          savedReservation.getId(), savedReservation.getReservationNumber());
-
-    } catch (Exception e) {
-      scheduleCapacityCache.compensate(request.getScheduleId(), request.getPersonCount());
       throw e;
     }
   }
@@ -143,7 +149,6 @@ public class ReservationService {
   }
 
   public byte[] getReservationQrCode(Long memberId, Long reservationId) {
-    // 소유권·상태 검증은 읽기 전용 트랜잭션 안에서 하고, QR 이미지 생성(CPU 작업)은 DB 커넥션을 놓은 뒤에 한다.
     String reservationNumber =
         readOnlyTransaction().execute(status -> findQrTargetNumber(memberId, reservationId));
     return qrService.generateQrCodeImage(reservationNumber);
