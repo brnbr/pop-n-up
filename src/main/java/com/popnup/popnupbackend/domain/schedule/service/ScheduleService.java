@@ -16,7 +16,9 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
@@ -25,11 +27,26 @@ public class ScheduleService {
   private final ScheduleRepository scheduleRepository;
   private final PopupRepository popupRepository;
   private final ScheduleCapacityCache scheduleCapacityCache;
+  private final ScheduleListCache scheduleListCache;
+  private final PlatformTransactionManager transactionManager;
 
-  @Transactional(readOnly = true)
   public List<ScheduleResponse> getScheduleByDate(Long popupId, LocalDate date) {
-    List<Schedule> schedules = scheduleRepository.findActiveSchedulesByDate(popupId, date);
     LocalDateTime now = LocalDateTime.now();
+
+    if (scheduleListCache.enabled()) {
+      var cached = scheduleListCache.get(popupId, date);
+      if (cached.isPresent()) {
+        return cached.get().stream().map(snapshot -> snapshot.toResponse(now)).toList();
+      }
+    }
+
+    TransactionTemplate readOnlyTx = new TransactionTemplate(transactionManager);
+    readOnlyTx.setReadOnly(true);
+    List<Schedule> schedules =
+        readOnlyTx.execute(status -> scheduleRepository.findActiveSchedulesByDate(popupId, date));
+    if (scheduleListCache.enabled()) {
+      scheduleListCache.put(popupId, date, schedules);
+    }
 
     return schedules.stream().map(schedule -> ScheduleResponse.from(schedule, now)).toList();
   }
@@ -60,6 +77,7 @@ public class ScheduleService {
 
     scheduleCapacityCache.init(
         savedSchedule.getId(), savedSchedule.getScheduleDate(), request.getMaxCapacity());
+    scheduleListCache.evictAfterCommit(popup.getId(), savedSchedule.getScheduleDate());
 
     return savedSchedule.getId();
   }
@@ -113,7 +131,13 @@ public class ScheduleService {
       throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
     }
 
-    scheduleRepository.saveAll(schedules);
+    List<Schedule> savedSchedules = scheduleRepository.saveAll(schedules);
+
+    for (Schedule savedSchedule : savedSchedules) {
+      scheduleCapacityCache.init(
+          savedSchedule.getId(), savedSchedule.getScheduleDate(), request.getMaxCapacity());
+    }
+    scheduleListCache.evictAfterCommit(popup.getId(), request.getScheduleDate());
     return schedules.size();
   }
 
@@ -124,6 +148,7 @@ public class ScheduleService {
             .findById(scheduleId)
             .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
     schedule.updateActiveStatus(isActive);
+    evictScheduleList(schedule);
   }
 
   @Transactional
@@ -138,6 +163,13 @@ public class ScheduleService {
     }
 
     scheduleRepository.delete(schedule);
+    evictScheduleList(schedule);
+  }
+
+  private void evictScheduleList(Schedule schedule) {
+    if (scheduleListCache.enabled()) {
+      scheduleListCache.evictAfterCommit(schedule.getPopup().getId(), schedule.getScheduleDate());
+    }
   }
 
   private void validateScheduleWithinPopupPeriod(Popup popup, LocalDate scheduleDate) {

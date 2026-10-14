@@ -66,7 +66,6 @@ public class Schedule extends BaseEntity {
     this.isActive = true;
   }
 
-  // 팝업 스케줄 등록
   public static Schedule createSchedule(
       Popup popup,
       LocalDate scheduleDate,
@@ -96,7 +95,6 @@ public class Schedule extends BaseEntity {
     }
   }
 
-  // 예약 인원 추가
   public void addReservation(int count, LocalDateTime currentDateTime) {
     if (count <= 0) {
       throw ScheduleErrorCode.INVALID_CAPACITY.toException();
@@ -121,33 +119,22 @@ public class Schedule extends BaseEntity {
     this.nowCapacity += count;
   }
 
-  // 예약 취소 + 잔여석 복구
-  public void cancelReservation(int count) {
-    if (count <= 0) {
-      throw ScheduleErrorCode.INVALID_CAPACITY.toException();
-    }
-
-    if (this.nowCapacity < count) {
-      throw ScheduleErrorCode.INVALID_CANCEL_COUNT.toException();
-    }
-
-    this.nowCapacity -= count;
-  }
-
-  // 잔여석 계산
   public int getRemainingCapacity() {
     return Math.max(0, this.maxCapacity - this.nowCapacity);
   }
 
-  // 매진 여부 판별
   public boolean isSoldOut() {
     return getRemainingCapacity() == 0;
   }
 
-  // 시작된 회차인가? (신규 예약 불가)
   public boolean isAlreadyStarted(LocalDateTime currentDateTime) {
     LocalDateTime startDateTime = LocalDateTime.of(this.scheduleDate, this.startTime);
     return startDateTime.isBefore(currentDateTime);
+  }
+
+  public boolean isCheckInAvailable(LocalDateTime currentDateTime) {
+    return this.scheduleDate.equals(currentDateTime.toLocalDate())
+        && !currentDateTime.toLocalTime().isAfter(this.endTime);
   }
 
   public void updateActiveStatus(boolean isActive) {

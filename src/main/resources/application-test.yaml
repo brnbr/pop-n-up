@@ -42,3 +42,7 @@ kakaopay:
 
 jwt:
   secret: as6rrc0S88l74sg6xAaJkG+QbcFUdqm+cI7B9E8hWI8=
+
+schedule:
+  capacity-resync:
+    enabled: false

@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.annotation.Secured;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,7 +21,6 @@ public class ScheduleController {
 
   private final ScheduleService scheduleService;
 
-  // 사용자 - 특정 팝업의 날짜별 스케줄 목록 조회
   @GetMapping("/popups/{popupId}/schedules")
   public ResponseEntity<ApiResponse<List<ScheduleResponse>>> getSchedules(
       @PathVariable Long popupId,
@@ -29,7 +29,7 @@ public class ScheduleController {
     return ResponseEntity.ok(ApiResponse.success("스케줄 목록 조회 성공", responses));
   }
 
-  // 스케줄 단건 등록
+  @Secured("ROLE_ADMIN")
   @PostMapping("/admin/schedules")
   public ResponseEntity<ApiResponse<Long>> createSchedule(
       @Valid @RequestBody ScheduleCreateRequest request) {
@@ -38,7 +38,7 @@ public class ScheduleController {
         .body(ApiResponse.success("스케줄이 등록되었습니다.", scheduleId));
   }
 
-  // 타임 슬롯 활성화/비활성화 상태 변경
+  @Secured("ROLE_ADMIN")
   @PatchMapping("/admin/schedules/{scheduleId}/status")
   public ResponseEntity<ApiResponse<Void>> updateScheduleStatus(
       @PathVariable Long scheduleId, @RequestParam boolean isActive) {
@@ -46,7 +46,7 @@ public class ScheduleController {
     return ResponseEntity.ok(ApiResponse.success("스케줄 상태가 변경되었습니다.", null));
   }
 
-  // 스케줄 삭제
+  @Secured("ROLE_ADMIN")
   @DeleteMapping("/admin/schedules/{scheduleId}")
   public ResponseEntity<ApiResponse<Void>> deleteSchedule(@PathVariable Long scheduleId) {
     scheduleService.deleteSchedule(scheduleId);
@@ -54,6 +54,7 @@ public class ScheduleController {
   }
 
   // 관리자 - 타임 슬롯 일괄 등록
+  @Secured("ROLE_ADMIN")
   @PostMapping("/admin/schedules/batch")
   public ResponseEntity<ApiResponse<Integer>> createBatchSchedules(
       @Valid @RequestBody ScheduleBatchCreateRequest request) {
