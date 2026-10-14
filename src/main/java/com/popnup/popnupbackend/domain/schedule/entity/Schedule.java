@@ -95,30 +95,6 @@ public class Schedule extends BaseEntity {
     }
   }
 
-  public void addReservation(int count, LocalDateTime currentDateTime) {
-    if (count <= 0) {
-      throw ScheduleErrorCode.INVALID_CAPACITY.toException();
-    }
-
-    if (!this.isActive) {
-      throw ScheduleErrorCode.SCHEDULE_INACTIVE.toException();
-    }
-
-    if (isAlreadyStarted(currentDateTime)) {
-      throw ScheduleErrorCode.SCHEDULE_ALREADY_STARTED.toException();
-    }
-
-    if (this.popup.getStatus() != PopupStatus.OPEN) {
-      throw ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND.toException();
-    }
-
-    if (this.nowCapacity + count > this.maxCapacity) {
-      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
-    }
-
-    this.nowCapacity += count;
-  }
-
   public int getRemainingCapacity() {
     return Math.max(0, this.maxCapacity - this.nowCapacity);
   }

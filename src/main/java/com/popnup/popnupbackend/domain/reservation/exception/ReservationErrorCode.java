@@ -13,7 +13,6 @@ public enum ReservationErrorCode implements ErrorCode {
   UNAUTHORIZED_RESERVATION_ACCESS(HttpStatus.FORBIDDEN, "해당 예약에 접근 권한이 없습니다."),
   INVALID_RESERVATION_STATUS(HttpStatus.CONFLICT, "유효하지 않은 예약 상태입니다."),
 
-  ALREADY_CANCELED_RESERVATION(HttpStatus.CONFLICT, "이미 취소된 예약입니다."),
   ALREADY_PROCESSED_RESERVATION(HttpStatus.CONFLICT, "이미 처리 완료된 예약입니다."),
   DUPLICATE_USER_RESERVATION(HttpStatus.CONFLICT, "해당 타임 슬롯이 이미 진행 중인 예약이 있습니다"),
 

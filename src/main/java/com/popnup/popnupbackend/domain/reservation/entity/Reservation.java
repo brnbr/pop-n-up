@@ -96,23 +96,6 @@ public class Reservation extends BaseEntity {
     this.status = ReservationStatus.USED;
   }
 
-  public void cancel() {
-    if (this.status == ReservationStatus.USED) {
-      throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
-    }
-
-    if (this.status == ReservationStatus.CANCELED) {
-      throw ReservationErrorCode.ALREADY_CANCELED_RESERVATION.toException();
-    }
-
-    if (this.status != ReservationStatus.CONFIRMED && this.status != ReservationStatus.PENDING) {
-      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
-    }
-
-    this.status = ReservationStatus.CANCELED;
-    this.activeMemberId = null;
-  }
-
   public boolean isOwnedBy(Long memberId) {
     if (memberId == null || this.member == null) {
       return false;

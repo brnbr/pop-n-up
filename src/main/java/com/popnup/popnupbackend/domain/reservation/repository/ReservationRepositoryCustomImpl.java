@@ -10,7 +10,6 @@ import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
-import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.querydsl.jpa.impl.JPAUpdateClause;
 import jakarta.persistence.LockModeType;
@@ -20,7 +19,6 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 
 @RequiredArgsConstructor
 public class ReservationRepositoryCustomImpl implements ReservationRepositoryCustom {
@@ -29,28 +27,10 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
 
   private final JPAQueryFactory queryFactory;
 
-  @Value("${reservation.query.admin-fetch-join:true}")
-  private boolean adminFetchJoin;
-
-  @Value("${reservation.query.member-list-fetch-join:false}")
-  private boolean memberListFetchJoin;
-
-  private JPAQuery<Reservation> selectReservationWithDetails() {
-    return queryFactory
-        .selectFrom(reservation)
-        .join(reservation.member, member)
-        .fetchJoin()
-        .join(reservation.schedule, schedule)
-        .fetchJoin()
-        .join(schedule.popup, popup)
-        .fetchJoin();
-  }
-
   @Override
   public List<Reservation> getAllReservation(Long memberId, int page, int size) {
-    JPAQuery<Reservation> query =
-        memberListFetchJoin ? selectReservationWithDetails() : queryFactory.selectFrom(reservation);
-    return query
+    return queryFactory
+        .selectFrom(reservation)
         .where(reservation.member.id.eq(memberId))
         .orderBy(reservation.createdAt.desc(), reservation.id.desc())
         .offset((long) page * size)
@@ -77,9 +57,14 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   @Override
   public List<Reservation> findAdminReservations(
       Long popupId, LocalDate scheduleDate, ReservationStatus status, int page, int size) {
-    JPAQuery<Reservation> query =
-        adminFetchJoin ? selectReservationWithDetails() : queryFactory.selectFrom(reservation);
-    return query
+    return queryFactory
+        .selectFrom(reservation)
+        .join(reservation.member, member)
+        .fetchJoin()
+        .join(reservation.schedule, schedule)
+        .fetchJoin()
+        .join(schedule.popup, popup)
+        .fetchJoin()
         .where(popupIdEq(popupId), scheduleDateEq(scheduleDate), statusEq(status))
         .orderBy(reservation.schedule.scheduleDate.asc(), reservation.schedule.startTime.asc())
         .offset((long) page * size)
