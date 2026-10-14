@@ -1,6 +1,7 @@
 package com.popnup.popnupbackend.domain.popup.controller;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
+import com.popnup.popnupbackend.domain.popup.dto.reponse.NearbyPopupResponse;
 import com.popnup.popnupbackend.domain.popup.dto.reponse.PopupListResponse;
 import com.popnup.popnupbackend.domain.popup.dto.reponse.PopupResponse;
 import com.popnup.popnupbackend.domain.popup.dto.request.PopupCreateRequest;
@@ -71,12 +72,12 @@ public class PopupController {
   }
 
   @GetMapping("/popups/nearby")
-  public ResponseEntity<ApiResponse<List<PopupResponse>>> getNearbyPopups(
+  public ResponseEntity<ApiResponse<List<NearbyPopupResponse>>> getNearbyPopups(
       @RequestParam("latitude") Double latitude,
       @RequestParam("longitude") Double longitude,
       @RequestParam(value = "radius", defaultValue = "3.0") Double radius) {
 
-    List<PopupResponse> responses = popupService.getNearbyPopups(latitude, longitude, radius);
+    List<NearbyPopupResponse> responses = popupService.getNearbyPopups(latitude, longitude, radius);
     return ResponseEntity.ok(ApiResponse.success("내 주변 팝업 조회 성공", responses));
   }
 

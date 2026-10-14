@@ -1,19 +1,23 @@
 package com.popnup.popnupbackend.domain.popup.service;
 
 import com.popnup.popnupbackend.domain.popup.dto.naver.NaverGeocodeResponse;
+import com.popnup.popnupbackend.domain.popup.dto.reponse.NearbyPopupResponse;
 import com.popnup.popnupbackend.domain.popup.dto.reponse.PopupListResponse;
 import com.popnup.popnupbackend.domain.popup.dto.reponse.PopupResponse;
 import com.popnup.popnupbackend.domain.popup.dto.request.PopupCreateRequest;
 import com.popnup.popnupbackend.domain.popup.dto.request.PopupImageRequest;
 import com.popnup.popnupbackend.domain.popup.dto.request.PopupSearchCondition;
 import com.popnup.popnupbackend.domain.popup.dto.request.PopupUpdateRequest;
+import com.popnup.popnupbackend.domain.popup.entity.ImageType;
 import com.popnup.popnupbackend.domain.popup.entity.Popup;
 import com.popnup.popnupbackend.domain.popup.entity.PopupImage;
 import com.popnup.popnupbackend.domain.popup.exception.PopupNotFoundException;
 import com.popnup.popnupbackend.domain.popup.repository.PopupImageRepository;
 import com.popnup.popnupbackend.domain.popup.repository.PopupRepository;
+import com.popnup.popnupbackend.domain.popup.repository.PopupThumbnailProjection;
 import java.math.BigDecimal;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -177,12 +181,17 @@ public class PopupService {
   }
 
   // 내 위치 기준 반경 N km 이내 팝업스토어 거리순 조회
+  // 내 위치 기준 반경 N km 이내 팝업스토어 거리순 조회
   @Transactional(readOnly = true)
-  public List<PopupResponse> getNearbyPopups(Double latitude, Double longitude, Double radius) {
+  public List<NearbyPopupResponse> getNearbyPopups(
+      Double latitude, Double longitude, Double radius) {
+
     // 1. 기본 반경 방어 (null이거나 0 이하일 경우 기본 3.0km)
     double searchRadius = (radius != null && radius > 0) ? radius : 3.0;
 
-    // 2. 위도 1도 ≈ 111km, 경도 1도 ≈ 111km * cos(위도)
+    // 2. Bounding Box 계산
+    // 위도 1도 ≈ 111km
+    // 경도 1도 ≈ 111km * cos(위도)
     double latDegreeDiff = searchRadius / 111.0;
     double lngDegreeDiff = searchRadius / (111.0 * Math.cos(Math.toRadians(latitude)));
 
@@ -191,28 +200,55 @@ public class PopupService {
     double minLng = longitude - lngDegreeDiff;
     double maxLng = longitude + lngDegreeDiff;
 
-    // 3. 1차: Bounding Box로 후보군 추출 (DB 인덱스 활용)
-    List<Popup> candidates =
-        popupRepository.findByLatitudeBetweenAndLongitudeBetween(minLat, maxLat, minLng, maxLng);
+    // 3. Bounding Box로 1차 후보 조회
+    List<Popup> candidates = popupRepository.findNearbyCandidates(minLat, maxLat, minLng, maxLng);
+    // 4. Haversine으로 실제 거리 계산 → 반경 필터링 → 거리순 정렬
+    List<Map.Entry<Popup, Double>> nearbyEntries =
+        candidates.stream()
+            .filter(popup -> popup.getLatitude() != null && popup.getLongitude() != null)
+            .map(
+                popup -> {
+                  double popupLat = popup.getLatitude().doubleValue();
+                  double popupLng = popup.getLongitude().doubleValue();
 
-    // 4. 2차: 하버사인 공식 계산 및 필터링, 거리순 정렬
-    return candidates.stream()
-        .filter(popup -> popup.getLatitude() != null && popup.getLongitude() != null)
-        .map(
-            popup -> {
-              // BigDecimal -> double 변환
-              double popupLat = popup.getLatitude().doubleValue();
-              double popupLng = popup.getLongitude().doubleValue();
+                  double distance = calculateDistanceInKm(latitude, longitude, popupLat, popupLng);
 
-              double dist = calculateDistanceInKm(latitude, longitude, popupLat, popupLng);
-              return Map.entry(popup, dist);
-            })
-        .filter(entry -> entry.getValue() <= searchRadius)
-        .sorted(Comparator.comparingDouble(Map.Entry::getValue)) // 가까운 거리순 오름차순
+                  return Map.entry(popup, distance);
+                })
+            .filter(entry -> entry.getValue() <= searchRadius)
+            .sorted(Comparator.comparingDouble(Map.Entry::getValue))
+            .toList();
+
+    // 주변 팝업이 하나도 없으면 바로 빈 리스트 반환
+    if (nearbyEntries.isEmpty()) {
+      return List.of();
+    }
+
+    // 5. 실제 반경 안에 들어온 팝업 ID 추출
+    List<Long> popupIds = nearbyEntries.stream().map(entry -> entry.getKey().getId()).toList();
+
+    // 6. 해당 팝업들의 THUMBNAIL만 한 번에 조회
+    List<PopupThumbnailProjection> thumbnails =
+        popupImageRepository.findThumbnails(popupIds, ImageType.THUMBNAIL);
+
+    // 7. popupId → thumbnailUrl 형태로 변환
+    Map<Long, String> thumbnailByPopupId = new HashMap<>();
+
+    for (PopupThumbnailProjection thumbnail : thumbnails) {
+      thumbnailByPopupId.putIfAbsent(thumbnail.getPopupId(), thumbnail.getImageUrl());
+    }
+
+    // 8. 최종 응답 DTO 생성
+    return nearbyEntries.stream()
         .map(
             entry -> {
-              double roundedDist = Math.round(entry.getValue() * 100.0) / 100.0; // 소수 둘째 자리 반올림
-              return PopupResponse.from(entry.getKey(), roundedDist);
+              Popup popup = entry.getKey();
+
+              double roundedDistance = Math.round(entry.getValue() * 100.0) / 100.0;
+
+              String thumbnailUrl = thumbnailByPopupId.get(popup.getId());
+
+              return NearbyPopupResponse.from(popup, roundedDistance, thumbnailUrl);
             })
         .toList();
   }
