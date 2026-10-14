@@ -11,7 +11,6 @@ public class CheckInRequest {
   @NotBlank(message = "예약 번호를 입력하세요")
   private String reservationNumber;
 
-  // note: test용 생성자
   public CheckInRequest(String reservationNumber) {
     this.reservationNumber = reservationNumber;
   }

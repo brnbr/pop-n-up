@@ -24,11 +24,6 @@ spring:
         pool:
           max-wait: 500ms
 
-management:
-  endpoint:
-    health:
-      show-details: always
-
 logging:
   level:
     org.hibernate.stat: debug
@@ -47,6 +42,8 @@ management:
     enable:
       hikaricp: true
       tomcat: true
+  health:
+    show-details: always
 
 server:
   tomcat:
