@@ -13,4 +13,19 @@ public enum ReservationStatus {
   EXPIRED("만료됨");
 
   private final String description;
+
+  /** 결제 완료로 예약을 확정할 수 있는 상태 */
+  public boolean canConfirm() {
+    return this == PENDING;
+  }
+
+  /** 체크인할 수 있는 상태 */
+  public boolean canCheckIn() {
+    return this == CONFIRMED;
+  }
+
+  /** 취소나 만료로 이미 끝난 상태 */
+  public boolean isEnded() {
+    return this == CANCELED || this == EXPIRED;
+  }
 }

@@ -83,7 +83,7 @@ public class ReservationCancelManager {
             .getFreshStatus(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    if (current == ReservationStatus.CANCELED || current == ReservationStatus.EXPIRED) {
+    if (current.isEnded()) {
       return false;
     }
 

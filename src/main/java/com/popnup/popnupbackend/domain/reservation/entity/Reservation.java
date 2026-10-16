@@ -74,7 +74,7 @@ public class Reservation extends BaseEntity {
   }
 
   public void confirm(boolean paymentSucceeded) {
-    if (this.status != ReservationStatus.PENDING) {
+    if (!this.status.canConfirm()) {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
     }
 
@@ -89,7 +89,7 @@ public class Reservation extends BaseEntity {
     if (this.status == ReservationStatus.USED) {
       throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
     }
-    if (this.status != ReservationStatus.CONFIRMED) {
+    if (!this.status.canCheckIn()) {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
     }
 
