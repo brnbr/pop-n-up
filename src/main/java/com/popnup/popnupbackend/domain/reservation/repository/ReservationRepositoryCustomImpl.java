@@ -5,11 +5,12 @@ import static com.popnup.popnupbackend.domain.popup.entity.QPopup.popup;
 import static com.popnup.popnupbackend.domain.reservation.entity.QReservation.reservation;
 import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule;
 
-import com.popnup.popnupbackend.domain.reservation.entity.QReservation;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
+import com.popnup.popnupbackend.domain.schedule.support.PessimisticLockSupport;
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.querydsl.jpa.impl.JPAUpdateClause;
 import jakarta.persistence.LockModeType;
@@ -75,28 +76,16 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   @Override
   public Optional<Reservation> findByReservationNumberWithPessimisticLock(
       String reservationNumber) {
-    Reservation result =
+    return PessimisticLockSupport.fetchOneForUpdate(
         queryFactory
             .selectFrom(reservation)
-            .where(reservation.reservationNumber.eq(reservationNumber))
-            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-            .setHint("jakarta.persistence.lock.timeout", 3000)
-            .fetchOne();
-
-    return Optional.ofNullable(result);
+            .where(reservation.reservationNumber.eq(reservationNumber)));
   }
 
   @Override
   public Optional<Reservation> findByIdWithPessimisticLock(Long id) {
-    Reservation result =
-        queryFactory
-            .selectFrom(reservation)
-            .where(reservation.id.eq(id))
-            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-            .setHint("jakarta.persistence.lock.timeout", 3000)
-            .fetchOne();
-
-    return Optional.ofNullable(result);
+    return PessimisticLockSupport.fetchOneForUpdate(
+        queryFactory.selectFrom(reservation).where(reservation.id.eq(id)));
   }
 
   @Override
@@ -146,55 +135,29 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   @Override
   public List<Reservation> findExpiredReservationsChunk(
       LocalDate today, LocalTime currentTime, int chunkSize) {
-    QReservation reservation = QReservation.reservation;
-
-    return queryFactory
-        .selectFrom(reservation)
-        .join(reservation.schedule, schedule)
-        .where(
-            reservation.status.eq(ReservationStatus.CONFIRMED),
-            schedule
-                .scheduleDate
-                .lt(today)
-                .or(schedule.scheduleDate.eq(today).and(schedule.endTime.lt(currentTime))))
-        .orderBy(reservation.id.asc())
-        .limit(chunkSize)
-        .fetch();
-  }
-
-  @Override
-  public List<Reservation> findPendingReservationsChunk(
-      ReservationStatus status, LocalDateTime deadline, int chunkSize) {
-    QReservation reservation = QReservation.reservation;
-
-    return queryFactory
-        .selectFrom(reservation)
-        .where(reservation.status.eq(status), reservation.createdAt.before(deadline))
-        .orderBy(reservation.id.asc())
-        .limit(chunkSize)
-        .fetch();
-  }
-
-  @Override
-  public List<Reservation> findPendingReservationsChunkForUpdate(
-      ReservationStatus status, LocalDateTime deadline, int chunkSize) {
-    QReservation reservation = QReservation.reservation;
-
-    return queryFactory
-        .selectFrom(reservation)
-        .where(reservation.status.eq(status), reservation.createdAt.before(deadline))
-        .orderBy(reservation.id.asc())
-        .limit(chunkSize)
-        .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-        .setHint("jakarta.persistence.lock.timeout", SKIP_LOCKED)
-        .fetch();
+    return expiredChunkQuery(today, currentTime, chunkSize).fetch();
   }
 
   @Override
   public List<Reservation> findExpiredReservationsChunkForUpdate(
       LocalDate today, LocalTime currentTime, int chunkSize) {
-    QReservation reservation = QReservation.reservation;
+    return skipLocked(expiredChunkQuery(today, currentTime, chunkSize)).fetch();
+  }
 
+  @Override
+  public List<Reservation> findPendingReservationsChunk(
+      ReservationStatus status, LocalDateTime deadline, int chunkSize) {
+    return pendingChunkQuery(status, deadline, chunkSize).fetch();
+  }
+
+  @Override
+  public List<Reservation> findPendingReservationsChunkForUpdate(
+      ReservationStatus status, LocalDateTime deadline, int chunkSize) {
+    return skipLocked(pendingChunkQuery(status, deadline, chunkSize)).fetch();
+  }
+
+  private JPAQuery<Reservation> expiredChunkQuery(
+      LocalDate today, LocalTime currentTime, int chunkSize) {
     return queryFactory
         .selectFrom(reservation)
         .join(reservation.schedule, schedule)
@@ -205,10 +168,22 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
                 .lt(today)
                 .or(schedule.scheduleDate.eq(today).and(schedule.endTime.lt(currentTime))))
         .orderBy(reservation.id.asc())
-        .limit(chunkSize)
+        .limit(chunkSize);
+  }
+
+  private JPAQuery<Reservation> pendingChunkQuery(
+      ReservationStatus status, LocalDateTime deadline, int chunkSize) {
+    return queryFactory
+        .selectFrom(reservation)
+        .where(reservation.status.eq(status), reservation.createdAt.before(deadline))
+        .orderBy(reservation.id.asc())
+        .limit(chunkSize);
+  }
+
+  private JPAQuery<Reservation> skipLocked(JPAQuery<Reservation> query) {
+    return query
         .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-        .setHint("jakarta.persistence.lock.timeout", SKIP_LOCKED)
-        .fetch();
+        .setHint("jakarta.persistence.lock.timeout", SKIP_LOCKED);
   }
 
   private BooleanExpression popupIdEq(Long popupId) {

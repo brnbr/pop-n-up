@@ -20,13 +20,7 @@ public class ReservationScheduler {
       lockAtMostFor = "${reservation.scheduler.payment-timeout-lock-at-most-for:50s}",
       lockAtLeastFor = "${reservation.scheduler.payment-timeout-lock-at-least-for:10s}")
   public void cancelExpiredPendingReservations() {
-    log.debug("[Scheduler] 미결제 예약 만료 처리 스케줄러 시작");
-    try {
-      reservationTimeoutProcessor.payTimeOut();
-      log.debug("[Scheduler] 미결제 예약 만료 처리 스케줄러 종료");
-    } catch (Exception e) {
-      log.error("[Scheduler] 미결제 예약 만료 처리 중 예외 발생", e);
-    }
+    runSafely("미결제 예약 만료 처리", reservationTimeoutProcessor::payTimeOut);
   }
 
   @Scheduled(cron = "${reservation.scheduler.no-show-cron:0 */10 * * * *}")
@@ -35,12 +29,16 @@ public class ReservationScheduler {
       lockAtMostFor = "${reservation.scheduler.no-show-lock-at-most-for:9m}",
       lockAtLeastFor = "${reservation.scheduler.no-show-lock-at-least-for:30s}")
   public void expirePastConfirmedReservation() {
-    log.debug("[Scheduler] 지난 회차 미방문 예약 만료 스케줄러 시작");
+    runSafely("지난 회차 미방문 예약 만료", reservationTimeoutProcessor::expirePastReservations);
+  }
+
+  private void runSafely(String jobName, Runnable job) {
+    log.debug("[Scheduler] {} 스케줄러 시작", jobName);
     try {
-      reservationTimeoutProcessor.expirePastReservations();
-      log.debug("[Scheduler] 지난 회차 미방문 예약 만료 스케줄러 종료");
+      job.run();
+      log.debug("[Scheduler] {} 스케줄러 종료", jobName);
     } catch (Exception e) {
-      log.error("[Scheduler] 미방문 예약 만료 처리 중 예외 발생", e);
+      log.error("[Scheduler] {} 중 예외 발생", jobName, e);
     }
   }
 }
