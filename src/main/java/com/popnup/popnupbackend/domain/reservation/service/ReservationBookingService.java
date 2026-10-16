@@ -12,8 +12,8 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
-import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -93,7 +93,7 @@ public class ReservationBookingService {
         scheduleRepository
             .findWithPopupById(request.getScheduleId())
             .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
-    schedule.validateBookable(KstTime.now());
+    schedule.validateBookable(LocalDateTime.now());
 
     increaseCapacity(request);
 

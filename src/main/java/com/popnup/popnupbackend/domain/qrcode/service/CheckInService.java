@@ -5,7 +5,7 @@ import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
-import com.popnup.popnupbackend.domain.schedule.support.KstTime;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +24,7 @@ public class CheckInService {
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
     if (reservation.getStatus().canCheckIn()
-        && !reservation.getSchedule().isCheckInAvailable(KstTime.now())) {
+        && !reservation.getSchedule().isCheckInAvailable(LocalDateTime.now())) {
       throw ReservationErrorCode.CHECK_IN_NOT_AVAILABLE_TIME.toException();
     }
 

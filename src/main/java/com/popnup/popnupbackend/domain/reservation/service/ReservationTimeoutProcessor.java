@@ -56,8 +56,9 @@ public class ReservationTimeoutProcessor {
   }
 
   public void expirePastReservations() {
-    LocalDate today = LocalDate.now();
-    LocalTime nowTime = LocalTime.now();
+    LocalDateTime now = LocalDateTime.now();
+    LocalDate today = now.toLocalDate();
+    LocalTime nowTime = now.toLocalTime();
     process(
         NO_SHOW_LABEL,
         () -> reservationRepository.findExpiredReservationsChunk(today, nowTime, chunkSize),

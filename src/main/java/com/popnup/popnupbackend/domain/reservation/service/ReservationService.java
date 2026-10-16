@@ -7,8 +7,8 @@ import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
-import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -78,7 +78,7 @@ public class ReservationService {
     }
 
     if (reservation.getStatus() == ReservationStatus.CONFIRMED
-        && reservation.getSchedule().isAlreadyStarted(KstTime.now())) {
+        && reservation.getSchedule().isAlreadyStarted(LocalDateTime.now())) {
       throw ReservationErrorCode.CANCEL_NOT_ALLOWED_AFTER_START.toException();
     }
 

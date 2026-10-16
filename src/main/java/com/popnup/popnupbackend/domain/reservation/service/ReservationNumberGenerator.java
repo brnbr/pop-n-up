@@ -1,7 +1,7 @@
 package com.popnup.popnupbackend.domain.reservation.service;
 
-import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import java.security.SecureRandom;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +16,7 @@ public class ReservationNumberGenerator {
   private static final SecureRandom RANDOM = new SecureRandom();
 
   public String generate() {
-    String today = KstTime.now().format(DATE_FORMAT);
+    String today = LocalDate.now().format(DATE_FORMAT);
 
     byte[] randomBytes = new byte[SUFFIX_LENGTH];
     RANDOM.nextBytes(randomBytes);

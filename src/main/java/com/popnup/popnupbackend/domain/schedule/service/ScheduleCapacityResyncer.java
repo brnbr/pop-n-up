@@ -4,7 +4,6 @@ import com.popnup.popnupbackend.domain.schedule.repository.ScheduleCapacitySnaps
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Counter;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
-import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -52,7 +51,6 @@ public class ScheduleCapacityResyncer {
       long maxAbsDrift,
       long durationMs) {}
 
-  /** 한 번의 재동기화 동안 누적하는 건수. */
   private static class Tally {
     int scanned;
     int initialized;
@@ -61,7 +59,6 @@ public class ScheduleCapacityResyncer {
     long maxAbsDrift;
   }
 
-  /** 청크 하나를 판정한 결과. 덮어쓸 대상과 건수를 담는다. */
   private static class ChunkPlan {
     final List<Restore> restores = new ArrayList<>();
     int initialized;
@@ -72,7 +69,7 @@ public class ScheduleCapacityResyncer {
 
   public Result resync() {
     long startNanos = System.nanoTime();
-    LocalDate today = KstTime.now().toLocalDate();
+    LocalDate today = LocalDate.now();
     Tally tally = new Tally();
     Set<Long> seen = new HashSet<>();
 

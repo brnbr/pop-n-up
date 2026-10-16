@@ -2,7 +2,6 @@ package com.popnup.popnupbackend.domain.reservation.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Set;
@@ -20,11 +19,11 @@ class ReservationNumberGeneratorTest {
   private final ReservationNumberGenerator generator = new ReservationNumberGenerator();
 
   @Test
-  @DisplayName("예약번호는 R + 한국 날짜(yyyyMMdd) + 혼동되는 문자(I, L, O, U)를 뺀 영숫자 10자리 형식이다")
+  @DisplayName("예약번호는 R + 오늘 날짜(yyyyMMdd) + 혼동되는 문자(I, L, O, U)를 뺀 영숫자 10자리 형식이다")
   void generate_format() {
-    LocalDate before = KstTime.now().toLocalDate();
+    LocalDate before = LocalDate.now();
     String number = generator.generate();
-    LocalDate after = KstTime.now().toLocalDate();
+    LocalDate after = LocalDate.now();
 
     assertThat(number).matches("R\\d{8}[0-9A-HJKMNP-TV-Z]{10}");
     assertThat(number).hasSize(19);
