@@ -13,9 +13,11 @@ import java.util.List;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
 @Getter
+@DynamicUpdate
 @Table(
     name = "schedules",
     indexes = {
@@ -132,14 +134,6 @@ public class Schedule extends BaseEntity {
     if (this.popup.getStatus() != PopupStatus.OPEN) {
       throw ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND.toException();
     }
-  }
-
-  public int getRemainingCapacity() {
-    return remainingOf(this.maxCapacity, this.nowCapacity);
-  }
-
-  public boolean isSoldOut() {
-    return getRemainingCapacity() == 0;
   }
 
   public boolean isAlreadyStarted(LocalDateTime currentDateTime) {

@@ -11,14 +11,12 @@ import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class ReservationService {
 
   private static final int MAX_PAGE_SIZE = 100;
