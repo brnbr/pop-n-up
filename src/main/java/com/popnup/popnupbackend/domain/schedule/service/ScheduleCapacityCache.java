@@ -33,7 +33,6 @@ public class ScheduleCapacityCache {
   private final StringRedisTemplate redisTemplate;
   private final ScheduleCapacityCounterStore counterStore;
 
-  /** 새 회차의 Redis 정원 키를 만들기 위한 정보. */
   public record Init(Long scheduleId, LocalDate scheduleDate, int maxCapacity) {}
 
   private static RedisScript<Long> loadScript(String path) {

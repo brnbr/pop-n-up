@@ -86,7 +86,7 @@ public class ReservationTimeoutProcessor {
     Totals totals = new Totals();
     int chunkNumber = 0;
 
-    log.info("[{}] 청크 기반 처리 시작 (Chunk Size: {})", label, chunkSize);
+    log.debug("[{}] 청크 기반 처리 시작 (Chunk Size: {})", label, chunkSize);
 
     while (true) {
       long chunkStart = System.currentTimeMillis();
@@ -99,7 +99,7 @@ public class ReservationTimeoutProcessor {
       totals.add(processChunk(label, label, chunk, expireAction));
 
       long chunkElapsedMs = System.currentTimeMillis() - chunkStart;
-      log.info(
+      log.debug(
           "[{}] 청크 #{} 처리 완료 - {}건, {}ms (건당 평균 {}ms)",
           label,
           chunkNumber,
@@ -121,7 +121,8 @@ public class ReservationTimeoutProcessor {
       Function<Long, Boolean> expireAction) {
     Totals totals = new Totals();
 
-    log.info("[{}] Multi Worker 처리 시작 (Worker: {}, Chunk Size: {})", label, workerCount, chunkSize);
+    log.debug(
+        "[{}] Multi Worker 처리 시작 (Worker: {}, Chunk Size: {})", label, workerCount, chunkSize);
 
     ExecutorService executor =
         Executors.newFixedThreadPool(
@@ -168,7 +169,7 @@ public class ReservationTimeoutProcessor {
       totals.add(result);
 
       long chunkElapsedMs = System.currentTimeMillis() - chunkStart;
-      log.info(
+      log.debug(
           "[{}][{}] 청크 처리 완료 - {}건(성공 {}, no-op {}, 실패 {}), {}ms",
           label,
           workerName,
