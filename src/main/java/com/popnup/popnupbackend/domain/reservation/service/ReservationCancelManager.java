@@ -55,7 +55,7 @@ public class ReservationCancelManager {
     int updatedRows = reservationRepository.tryUpdateStatus(reservationId, newStatus, fromStatuses);
 
     if (updatedRows == 0) {
-      return handleFailedTransition(reservationId, fromStatuses);
+      return handleFailedTransition(reservationId);
     }
 
     int restoredRows =
@@ -76,7 +76,7 @@ public class ReservationCancelManager {
     return true;
   }
 
-  private boolean handleFailedTransition(Long reservationId, List<ReservationStatus> fromStatuses) {
+  private boolean handleFailedTransition(Long reservationId) {
 
     ReservationStatus current =
         reservationStatusReader
@@ -89,10 +89,6 @@ public class ReservationCancelManager {
 
     if (current == ReservationStatus.USED) {
       throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
-    }
-
-    if (!fromStatuses.contains(current)) {
-      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
     }
 
     throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();

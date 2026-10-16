@@ -199,9 +199,9 @@ public class ReservationService {
 
   @Transactional(readOnly = true)
   public List<ReservationResponse> allReservations(Long memberId, int page, int size) {
-    int safePage = Math.max(page, 0);
-    int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-    return reservationRepository.getAllReservation(memberId, safePage, safeSize).stream()
+    return reservationRepository
+        .getAllReservation(memberId, safePage(page), safeSize(size))
+        .stream()
         .map(ReservationResponse::from)
         .toList();
   }
@@ -217,12 +217,18 @@ public class ReservationService {
   @Transactional(readOnly = true)
   public List<AdminReservationResponse> getAdminReservations(
       Long popupId, LocalDate scheduleDate, ReservationStatus status, int page, int size) {
-    int safePage = Math.max(page, 0);
-    int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
     return reservationRepository
-        .findAdminReservations(popupId, scheduleDate, status, safePage, safeSize)
+        .findAdminReservations(popupId, scheduleDate, status, safePage(page), safeSize(size))
         .stream()
         .map(AdminReservationResponse::from)
         .toList();
+  }
+
+  private static int safePage(int page) {
+    return Math.max(page, 0);
+  }
+
+  private static int safeSize(int size) {
+    return Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
   }
 }
