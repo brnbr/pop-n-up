@@ -223,7 +223,7 @@ class ReservationControllerTest {
               LocalDateTime.of(2026, 9, 15, 14, 0),
               2);
 
-      given(reservationService.allReservations(1L, 0, 20)).willReturn(List.of(response));
+      given(reservationService.getMemberReservations(1L, 0, 20)).willReturn(List.of(response));
 
       // when & then
       mockMvc
@@ -234,7 +234,7 @@ class ReservationControllerTest {
           .andExpect(jsonPath("$.content[0].reservationNumber").value("R20260915TEST"))
           .andExpect(jsonPath("$.content[0].status").value("CONFIRMED"));
 
-      verify(reservationService).allReservations(1L, 0, 20);
+      verify(reservationService).getMemberReservations(1L, 0, 20);
     }
   }
 
@@ -255,7 +255,7 @@ class ReservationControllerTest {
               LocalDateTime.of(2026, 9, 15, 14, 0),
               2);
 
-      given(reservationService.oneReservation(1L, reservationId)).willReturn(response);
+      given(reservationService.getMemberReservation(1L, reservationId)).willReturn(response);
 
       // when & then
       mockMvc
@@ -265,7 +265,7 @@ class ReservationControllerTest {
           .andExpect(jsonPath("$.content.reservationId").value(reservationId))
           .andExpect(jsonPath("$.content.reservationNumber").value("R20260915TEST"));
 
-      verify(reservationService).oneReservation(1L, reservationId);
+      verify(reservationService).getMemberReservation(1L, reservationId);
     }
   }
 

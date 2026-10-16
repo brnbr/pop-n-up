@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface ReservationRepositoryCustom {
 
-  List<Reservation> getAllReservation(Long memberId, int page, int size);
+  List<Reservation> findMemberReservations(Long memberId, int page, int size);
 
   boolean hasActiveReservation(Long scheduleId, Long memberId);
 

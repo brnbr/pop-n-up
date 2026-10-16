@@ -69,14 +69,16 @@ public class ReservationController {
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
     return ResponseEntity.ok(
-        ApiResponse.success(reservationService.allReservations(authUser.getId(), page, size)));
+        ApiResponse.success(
+            reservationService.getMemberReservations(authUser.getId(), page, size)));
   }
 
   @GetMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<ReservationResponse>> getOne(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
     return ResponseEntity.ok(
-        ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
+        ApiResponse.success(
+            reservationService.getMemberReservation(authUser.getId(), reservationId)));
   }
 
   @Secured("ROLE_ADMIN")

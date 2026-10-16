@@ -198,16 +198,16 @@ public class ReservationService {
   }
 
   @Transactional(readOnly = true)
-  public List<ReservationResponse> allReservations(Long memberId, int page, int size) {
+  public List<ReservationResponse> getMemberReservations(Long memberId, int page, int size) {
     return reservationRepository
-        .getAllReservation(memberId, safePage(page), safeSize(size))
+        .findMemberReservations(memberId, safePage(page), safeSize(size))
         .stream()
         .map(ReservationResponse::from)
         .toList();
   }
 
   @Transactional(readOnly = true)
-  public ReservationResponse oneReservation(Long memberId, Long reservationId) {
+  public ReservationResponse getMemberReservation(Long memberId, Long reservationId) {
     return reservationRepository
         .findByIdAndMemberId(reservationId, memberId)
         .map(ReservationResponse::from)

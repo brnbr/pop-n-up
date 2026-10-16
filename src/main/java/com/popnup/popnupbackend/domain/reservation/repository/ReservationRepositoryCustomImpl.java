@@ -29,7 +29,7 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
   private final JPAQueryFactory queryFactory;
 
   @Override
-  public List<Reservation> getAllReservation(Long memberId, int page, int size) {
+  public List<Reservation> findMemberReservations(Long memberId, int page, int size) {
     return queryFactory
         .selectFrom(reservation)
         .where(reservation.member.id.eq(memberId))

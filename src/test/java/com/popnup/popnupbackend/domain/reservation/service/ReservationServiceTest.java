@@ -376,7 +376,7 @@ class ReservationServiceTest {
 
     @Test
     @DisplayName("성공: 회원의 예약 목록 전체를 정상 조회한다")
-    void allReservations_success() {
+    void getMemberReservations_success() {
       // given
       Long memberId = 1L;
       Reservation reservation = mock(Reservation.class);
@@ -385,11 +385,11 @@ class ReservationServiceTest {
       given(reservation.getStatus()).willReturn(ReservationStatus.CONFIRMED);
       given(reservation.getPersonCount()).willReturn(2);
 
-      given(reservationRepository.getAllReservation(memberId, 0, 20))
+      given(reservationRepository.findMemberReservations(memberId, 0, 20))
           .willReturn(List.of(reservation));
 
       // when
-      List<ReservationResponse> results = reservationService.allReservations(memberId, 0, 20);
+      List<ReservationResponse> results = reservationService.getMemberReservations(memberId, 0, 20);
 
       // then
       assertThat(results).hasSize(1);
@@ -398,20 +398,20 @@ class ReservationServiceTest {
 
     @Test
     @DisplayName("내 예약 목록: 음수 page는 0으로, 너무 큰 size는 100으로, 0 이하 size는 1로 보정한다")
-    void allReservations_pageParamsClamped() {
-      given(reservationRepository.getAllReservation(1L, 0, 100)).willReturn(List.of());
-      given(reservationRepository.getAllReservation(1L, 3, 1)).willReturn(List.of());
+    void getMemberReservations_pageParamsClamped() {
+      given(reservationRepository.findMemberReservations(1L, 0, 100)).willReturn(List.of());
+      given(reservationRepository.findMemberReservations(1L, 3, 1)).willReturn(List.of());
 
-      reservationService.allReservations(1L, -5, 100000);
-      reservationService.allReservations(1L, 3, 0);
+      reservationService.getMemberReservations(1L, -5, 100000);
+      reservationService.getMemberReservations(1L, 3, 0);
 
-      verify(reservationRepository).getAllReservation(1L, 0, 100);
-      verify(reservationRepository).getAllReservation(1L, 3, 1);
+      verify(reservationRepository).findMemberReservations(1L, 0, 100);
+      verify(reservationRepository).findMemberReservations(1L, 3, 1);
     }
 
     @Test
     @DisplayName("성공: 예약 ID와 회원 ID로 단건 예약을 정상 조회한다")
-    void oneReservation_success() {
+    void getMemberReservation_success() {
       // given
       Long memberId = 1L;
       Long reservationId = 100L;
@@ -426,7 +426,8 @@ class ReservationServiceTest {
           .willReturn(Optional.of(reservation));
 
       // when
-      ReservationResponse response = reservationService.oneReservation(memberId, reservationId);
+      ReservationResponse response =
+          reservationService.getMemberReservation(memberId, reservationId);
 
       // then
       assertThat(response.getReservationId()).isEqualTo(reservationId);
@@ -435,7 +436,7 @@ class ReservationServiceTest {
 
     @Test
     @DisplayName("실패: 단건 조회 시 내역이 없으면 RESERVATION_NOT_FOUND 예외가 발생한다")
-    void oneReservation_notFound() {
+    void getMemberReservation_notFound() {
       // given
       Long memberId = 1L;
       Long reservationId = 100L;
@@ -444,7 +445,7 @@ class ReservationServiceTest {
           .willReturn(Optional.empty());
 
       // when & then
-      assertThatThrownBy(() -> reservationService.oneReservation(memberId, reservationId))
+      assertThatThrownBy(() -> reservationService.getMemberReservation(memberId, reservationId))
           .isInstanceOf(ServiceException.class)
           .satisfies(
               e ->
