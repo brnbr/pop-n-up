@@ -26,6 +26,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -432,6 +433,156 @@ class ScheduleServiceTest {
             .usingRecursiveComparison()
             .isEqualTo(ScheduleResponse.from(schedule, now));
       }
+    }
+  }
+
+  @Nested
+  @DisplayName("타임 슬롯 분할 규칙 [createBatchSchedules]")
+  class BatchSlotGenerationTest {
+
+    private final LocalDate date = LocalDate.of(2026, 9, 20);
+
+    private ScheduleBatchCreateRequest request(
+        LocalTime open, LocalTime close, int interval, int capacity) {
+      ScheduleBatchCreateRequest request = new ScheduleBatchCreateRequest();
+      ReflectionTestUtils.setField(request, "popupId", 1L);
+      ReflectionTestUtils.setField(request, "scheduleDate", date);
+      ReflectionTestUtils.setField(request, "openTime", open);
+      ReflectionTestUtils.setField(request, "closeTime", close);
+      ReflectionTestUtils.setField(request, "intervalMinutes", interval);
+      ReflectionTestUtils.setField(request, "maxCapacity", capacity);
+      return request;
+    }
+
+    private void popupExists() {
+      Popup popup = mock(Popup.class);
+      given(popup.getId()).willReturn(1L);
+      given(popup.getStartDate()).willReturn(LocalDate.of(2026, 9, 1));
+      given(popup.getEndDate()).willReturn(LocalDate.of(2026, 9, 30));
+      given(popupRepository.findById(1L)).willReturn(Optional.of(popup));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Schedule> saved() {
+      ArgumentCaptor<List<Schedule>> captor = ArgumentCaptor.forClass(List.class);
+      verify(scheduleRepository).saveAll(captor.capture());
+      return captor.getValue();
+    }
+
+    private void stubSaveAll() {
+      lenient()
+          .when(scheduleRepository.saveAll(anyList()))
+          .thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @Test
+    @DisplayName("간격에 맞춰 연속된 슬롯으로 나눈다 (10:00~13:00, 60분 → 3개)")
+    void splitsIntoConsecutiveSlots() {
+      popupExists();
+      stubSaveAll();
+
+      int count =
+          scheduleService.createBatchSchedules(
+              request(LocalTime.of(10, 0), LocalTime.of(13, 0), 60, 20));
+
+      assertThat(count).isEqualTo(3);
+      List<Schedule> slots = saved();
+      assertThat(slots)
+          .extracting(Schedule::getStartTime)
+          .containsExactly(LocalTime.of(10, 0), LocalTime.of(11, 0), LocalTime.of(12, 0));
+      assertThat(slots)
+          .extracting(Schedule::getEndTime)
+          .containsExactly(LocalTime.of(11, 0), LocalTime.of(12, 0), LocalTime.of(13, 0));
+      assertThat(slots)
+          .allSatisfy(
+              slot -> {
+                assertThat(slot.getScheduleDate()).isEqualTo(date);
+                assertThat(slot.getMaxCapacity()).isEqualTo(20);
+                assertThat(slot.getNowCapacity()).isZero();
+                assertThat(slot.isActive()).isTrue();
+              });
+    }
+
+    @Test
+    @DisplayName("마감 시각에 못 미치는 마지막 남은 구간은 슬롯으로 만들지 않는다 (10:00~12:30, 60분 → 2개)")
+    void dropsTrailingPartialSlot() {
+      popupExists();
+      stubSaveAll();
+
+      int count =
+          scheduleService.createBatchSchedules(
+              request(LocalTime.of(10, 0), LocalTime.of(12, 30), 60, 20));
+
+      assertThat(count).isEqualTo(2);
+      assertThat(saved())
+          .extracting(Schedule::getEndTime)
+          .containsExactly(LocalTime.of(11, 0), LocalTime.of(12, 0));
+    }
+
+    @Test
+    @DisplayName("간격이 영업 시간보다 길어 슬롯이 하나도 안 나오면 INVALID_TIME_RANGE (10:00~11:00, 90분)")
+    void intervalLongerThanWindow_isInvalid() {
+      popupExists();
+      stubSaveAll();
+
+      assertThatThrownBy(
+              () ->
+                  scheduleService.createBatchSchedules(
+                      request(LocalTime.of(10, 0), LocalTime.of(11, 0), 90, 20)))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.INVALID_TIME_RANGE));
+      verify(scheduleRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("자정을 넘기는 슬롯은 만들지 않는다 (22:00~23:59, 30분 → 22:00, 22:30, 23:00 시작 3개)")
+    void doesNotCrossMidnight() {
+      popupExists();
+      stubSaveAll();
+
+      int count =
+          scheduleService.createBatchSchedules(
+              request(LocalTime.of(22, 0), LocalTime.of(23, 59), 30, 20));
+
+      assertThat(count).isEqualTo(3);
+      assertThat(saved())
+          .extracting(Schedule::getStartTime)
+          .containsExactly(LocalTime.of(22, 0), LocalTime.of(22, 30), LocalTime.of(23, 0));
+    }
+
+    @Test
+    @DisplayName("마지막 슬롯이 자정으로 넘어가면 그 슬롯만 빠진다 (23:00~23:59, 60분 → 없음 → INVALID_TIME_RANGE)")
+    void onlySlotCrossingMidnight_isInvalid() {
+      popupExists();
+      stubSaveAll();
+
+      assertThatThrownBy(
+              () ->
+                  scheduleService.createBatchSchedules(
+                      request(LocalTime.of(23, 0), LocalTime.of(23, 59), 60, 20)))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.INVALID_TIME_RANGE));
+    }
+
+    @Test
+    @DisplayName("시간 범위 오류는 팝업 조회보다 먼저 검사한다 (존재하지 않는 팝업이어도 INVALID_TIME_RANGE)")
+    void timeRangeIsCheckedBeforePopupLookup() {
+      assertThatThrownBy(
+              () ->
+                  scheduleService.createBatchSchedules(
+                      request(LocalTime.of(12, 0), LocalTime.of(10, 0), 60, 20)))
+          .isInstanceOf(ServiceException.class)
+          .satisfies(
+              e ->
+                  assertThat(((ServiceException) e).getErrorCode())
+                      .isEqualTo(ScheduleErrorCode.INVALID_TIME_RANGE));
+      verify(popupRepository, never()).findById(anyLong());
     }
   }
 }

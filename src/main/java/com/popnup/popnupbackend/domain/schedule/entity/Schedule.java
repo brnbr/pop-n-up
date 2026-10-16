@@ -8,6 +8,8 @@ import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -81,6 +83,34 @@ public class Schedule extends BaseEntity {
     }
 
     return new Schedule(popup, scheduleDate, startTime, endTime, maxCapacity);
+  }
+
+  public static List<Schedule> createSlots(
+      Popup popup,
+      LocalDate scheduleDate,
+      LocalTime openTime,
+      LocalTime closeTime,
+      int intervalMinutes,
+      Integer maxCapacity) {
+    if (intervalMinutes <= 0) {
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
+    }
+
+    List<Schedule> slots = new ArrayList<>();
+    LocalTime start = openTime;
+    while (start.isBefore(closeTime)) {
+      LocalTime end = start.plusMinutes(intervalMinutes);
+      if (end.isAfter(closeTime) || end.isBefore(start)) {
+        break;
+      }
+      slots.add(createSchedule(popup, scheduleDate, start, end, maxCapacity));
+      start = end;
+    }
+
+    if (slots.isEmpty()) {
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
+    }
+    return slots;
   }
 
   public void validateBookable(LocalDateTime currentDateTime) {

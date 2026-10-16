@@ -12,7 +12,6 @@ import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -54,16 +53,11 @@ public class ScheduleService {
   @Transactional
   public Long createSchedule(ScheduleCreateRequest request) {
     Popup popup =
-        popupRepository
-            .findById(request.getPopupId())
-            .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 팝업입니다."));
-
-    validateScheduleWithinPopupPeriod(popup, request.getScheduleDate());
-
-    if (scheduleRepository.existOverlappingSchedule(
-        popup.getId(), request.getScheduleDate(), request.getStartTime(), request.getEndTime())) {
-      throw ScheduleErrorCode.DUPLICATE_TIME_SLOT.toException();
-    }
+        findCreatablePopup(
+            request.getPopupId(),
+            request.getScheduleDate(),
+            request.getStartTime(),
+            request.getEndTime());
 
     Schedule schedule =
         Schedule.createSchedule(
@@ -84,52 +78,23 @@ public class ScheduleService {
 
   @Transactional
   public int createBatchSchedules(ScheduleBatchCreateRequest request) {
-    if (!request.getCloseTime().isAfter(request.getOpenTime())) {
-      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
-    }
-
-    if (request.getIntervalMinutes() == null || request.getIntervalMinutes() <= 0) {
-      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
-    }
+    validateBatchTimeRange(request);
 
     Popup popup =
-        popupRepository
-            .findById(request.getPopupId())
-            .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 팝업입니다."));
+        findCreatablePopup(
+            request.getPopupId(),
+            request.getScheduleDate(),
+            request.getOpenTime(),
+            request.getCloseTime());
 
-    validateScheduleWithinPopupPeriod(popup, request.getScheduleDate());
-
-    if (scheduleRepository.existOverlappingSchedule(
-        popup.getId(), request.getScheduleDate(), request.getOpenTime(), request.getCloseTime())) {
-      throw ScheduleErrorCode.DUPLICATE_TIME_SLOT.toException();
-    }
-
-    List<Schedule> schedules = new ArrayList<>();
-    LocalTime currentStartTime = request.getOpenTime();
-
-    while (currentStartTime.isBefore(request.getCloseTime())) {
-      LocalTime currentEndTime = currentStartTime.plusMinutes(request.getIntervalMinutes());
-
-      if (currentEndTime.isAfter(request.getCloseTime())
-          || currentEndTime.isBefore(currentStartTime)) {
-        break;
-      }
-
-      Schedule schedule =
-          Schedule.createSchedule(
-              popup,
-              request.getScheduleDate(),
-              currentStartTime,
-              currentEndTime,
-              request.getMaxCapacity());
-      schedules.add(schedule);
-
-      currentStartTime = currentEndTime;
-    }
-
-    if (schedules.isEmpty()) {
-      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
-    }
+    List<Schedule> schedules =
+        Schedule.createSlots(
+            popup,
+            request.getScheduleDate(),
+            request.getOpenTime(),
+            request.getCloseTime(),
+            request.getIntervalMinutes(),
+            request.getMaxCapacity());
 
     List<Schedule> savedSchedules = scheduleRepository.saveAll(schedules);
 
@@ -170,6 +135,32 @@ public class ScheduleService {
     if (scheduleListCache.enabled()) {
       scheduleListCache.evictAfterCommit(schedule.getPopup().getId(), schedule.getScheduleDate());
     }
+  }
+
+  private void validateBatchTimeRange(ScheduleBatchCreateRequest request) {
+    if (!request.getCloseTime().isAfter(request.getOpenTime())) {
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
+    }
+
+    if (request.getIntervalMinutes() == null || request.getIntervalMinutes() <= 0) {
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
+    }
+  }
+
+  private Popup findCreatablePopup(
+      Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime) {
+    Popup popup =
+        popupRepository
+            .findById(popupId)
+            .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 팝업입니다."));
+
+    validateScheduleWithinPopupPeriod(popup, scheduleDate);
+
+    if (scheduleRepository.existOverlappingSchedule(
+        popup.getId(), scheduleDate, startTime, endTime)) {
+      throw ScheduleErrorCode.DUPLICATE_TIME_SLOT.toException();
+    }
+    return popup;
   }
 
   private void validateScheduleWithinPopupPeriod(Popup popup, LocalDate scheduleDate) {
