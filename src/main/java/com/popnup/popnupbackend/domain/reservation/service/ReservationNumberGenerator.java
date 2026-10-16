@@ -1,8 +1,7 @@
 package com.popnup.popnupbackend.domain.reservation.service;
 
-import com.fasterxml.uuid.Generators;
-import com.fasterxml.uuid.impl.TimeBasedGenerator;
-import java.time.LocalDate;
+import com.popnup.popnupbackend.domain.schedule.support.KstTime;
+import java.security.SecureRandom;
 import java.time.format.DateTimeFormatter;
 import org.springframework.stereotype.Component;
 
@@ -11,19 +10,21 @@ public class ReservationNumberGenerator {
 
   private static final String PREFIX = "R";
   private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
-  private static final int SUFFIX_LENGTH = 8;
+  private static final char[] ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ".toCharArray();
+  private static final int SUFFIX_LENGTH = 10;
 
-  private static final TimeBasedGenerator UUID_GENERATOR = Generators.timeBasedGenerator();
+  private static final SecureRandom RANDOM = new SecureRandom();
 
   public String generate() {
-    String today = LocalDate.now().format(DATE_FORMAT);
-    String suffix =
-        UUID_GENERATOR
-            .generate()
-            .toString()
-            .replace("-", "")
-            .substring(0, SUFFIX_LENGTH)
-            .toUpperCase();
-    return PREFIX + today + suffix;
+    String today = KstTime.now().format(DATE_FORMAT);
+
+    byte[] randomBytes = new byte[SUFFIX_LENGTH];
+    RANDOM.nextBytes(randomBytes);
+    char[] suffix = new char[SUFFIX_LENGTH];
+    for (int i = 0; i < SUFFIX_LENGTH; i++) {
+      suffix[i] = ALPHABET[randomBytes[i] & (ALPHABET.length - 1)];
+    }
+
+    return PREFIX + today + new String(suffix);
   }
 }
