@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -31,14 +32,20 @@ public class ScheduleService {
 
   public List<ScheduleResponse> getScheduleByDate(Long popupId, LocalDate date) {
     LocalDateTime now = LocalDateTime.now();
+    return findInCache(popupId, date, now).orElseGet(() -> loadFromDb(popupId, date, now));
+  }
 
-    if (scheduleListCache.enabled()) {
-      var cached = scheduleListCache.get(popupId, date);
-      if (cached.isPresent()) {
-        return cached.get().stream().map(snapshot -> snapshot.toResponse(now)).toList();
-      }
+  private Optional<List<ScheduleResponse>> findInCache(
+      Long popupId, LocalDate date, LocalDateTime now) {
+    if (!scheduleListCache.enabled()) {
+      return Optional.empty();
     }
+    return scheduleListCache
+        .get(popupId, date)
+        .map(snapshots -> snapshots.stream().map(snapshot -> snapshot.toResponse(now)).toList());
+  }
 
+  private List<ScheduleResponse> loadFromDb(Long popupId, LocalDate date, LocalDateTime now) {
     TransactionTemplate readOnlyTx = new TransactionTemplate(transactionManager);
     readOnlyTx.setReadOnly(true);
     List<Schedule> schedules =
@@ -46,7 +53,6 @@ public class ScheduleService {
     if (scheduleListCache.enabled()) {
       scheduleListCache.put(popupId, date, schedules);
     }
-
     return schedules.stream().map(schedule -> ScheduleResponse.from(schedule, now)).toList();
   }
 

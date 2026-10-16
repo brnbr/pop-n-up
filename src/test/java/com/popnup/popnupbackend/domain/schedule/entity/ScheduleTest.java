@@ -98,4 +98,22 @@ class ScheduleTest {
                 assertThat(((ServiceException) e).getErrorCode())
                     .isEqualTo(ScheduleErrorCode.INVALID_CAPACITY));
   }
+
+  @Test
+  @DisplayName("잔여 인원: 정원 - 현재 인원, 정원을 넘겨도 0 아래로 내려가지 않는다")
+  void remainingOf() {
+    assertThat(Schedule.remainingOf(20, 5)).isEqualTo(15);
+    assertThat(Schedule.remainingOf(20, 20)).isZero();
+    assertThat(Schedule.remainingOf(20, 25)).isZero();
+  }
+
+  @Test
+  @DisplayName("시작 판정: 시작 시각이 기준 시각보다 이전일 때만 시작한 것이다")
+  void hasStarted() {
+    LocalTime ten = LocalTime.of(10, 0);
+
+    assertThat(Schedule.hasStarted(DAY, ten, LocalDateTime.of(DAY, LocalTime.of(10, 1)))).isTrue();
+    assertThat(Schedule.hasStarted(DAY, ten, LocalDateTime.of(DAY, ten))).isFalse();
+    assertThat(Schedule.hasStarted(DAY, ten, LocalDateTime.of(DAY, LocalTime.of(9, 59)))).isFalse();
+  }
 }

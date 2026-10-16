@@ -88,7 +88,7 @@ class ReservationServiceTest {
       given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
       given(reservationRepository.hasActiveReservation(scheduleId, memberId)).willReturn(false);
       given(scheduleCapacityCache.tryReserve(scheduleId, personCount)).willReturn(true);
-      given(scheduleRepository.findByIdForValidation(scheduleId)).willReturn(Optional.of(schedule));
+      given(scheduleRepository.findWithPopupById(scheduleId)).willReturn(Optional.of(schedule));
       given(scheduleRepository.tryIncreaseCapacity(scheduleId, personCount)).willReturn(1);
       given(reservationRepository.save(any(Reservation.class))).willReturn(reservation);
       given(reservation.getId()).willReturn(100L);
@@ -200,7 +200,7 @@ class ReservationServiceTest {
       given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
       given(reservationRepository.hasActiveReservation(scheduleId, memberId)).willReturn(false);
       given(scheduleCapacityCache.tryReserve(scheduleId, personCount)).willReturn(true);
-      given(scheduleRepository.findByIdForValidation(scheduleId)).willReturn(Optional.of(schedule));
+      given(scheduleRepository.findWithPopupById(scheduleId)).willReturn(Optional.of(schedule));
       given(scheduleRepository.tryIncreaseCapacity(scheduleId, personCount)).willReturn(0);
 
       // when & then

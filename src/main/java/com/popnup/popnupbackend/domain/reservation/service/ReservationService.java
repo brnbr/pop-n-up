@@ -103,7 +103,7 @@ public class ReservationService {
   private Reservation createReservation(Member member, ReservationCreateRequest request) {
     Schedule schedule =
         scheduleRepository
-            .findByIdForValidation(request.getScheduleId())
+            .findWithPopupById(request.getScheduleId())
             .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
     schedule.validateBookable(KstTime.now());
 

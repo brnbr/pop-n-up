@@ -69,7 +69,7 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
   }
 
   @Override
-  public Optional<Schedule> findByIdForValidation(Long id) {
+  public Optional<Schedule> findWithPopupById(Long id) {
     Schedule result =
         queryFactory
             .selectFrom(schedule)

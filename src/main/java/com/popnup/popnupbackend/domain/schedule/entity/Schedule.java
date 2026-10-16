@@ -113,6 +113,15 @@ public class Schedule extends BaseEntity {
     return slots;
   }
 
+  public static int remainingOf(int maxCapacity, int nowCapacity) {
+    return Math.max(0, maxCapacity - nowCapacity);
+  }
+
+  public static boolean hasStarted(
+      LocalDate scheduleDate, LocalTime startTime, LocalDateTime currentDateTime) {
+    return LocalDateTime.of(scheduleDate, startTime).isBefore(currentDateTime);
+  }
+
   public void validateBookable(LocalDateTime currentDateTime) {
     if (!this.isActive) {
       throw ScheduleErrorCode.SCHEDULE_INACTIVE.toException();
@@ -126,7 +135,7 @@ public class Schedule extends BaseEntity {
   }
 
   public int getRemainingCapacity() {
-    return Math.max(0, this.maxCapacity - this.nowCapacity);
+    return remainingOf(this.maxCapacity, this.nowCapacity);
   }
 
   public boolean isSoldOut() {
@@ -134,8 +143,7 @@ public class Schedule extends BaseEntity {
   }
 
   public boolean isAlreadyStarted(LocalDateTime currentDateTime) {
-    LocalDateTime startDateTime = LocalDateTime.of(this.scheduleDate, this.startTime);
-    return startDateTime.isBefore(currentDateTime);
+    return hasStarted(this.scheduleDate, this.startTime, currentDateTime);
   }
 
   public boolean isCheckInAvailable(LocalDateTime currentDateTime) {

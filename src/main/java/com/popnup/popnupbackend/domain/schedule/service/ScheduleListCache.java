@@ -63,23 +63,16 @@ public class ScheduleListCache {
     }
 
     ScheduleResponse toResponse(LocalDateTime now) {
-      LocalDate date = LocalDate.parse(scheduleDate);
-      LocalTime start = LocalTime.parse(startTime);
-      int remaining = Math.max(0, maxCapacity - nowCapacity);
-      boolean started = LocalDateTime.of(date, start).isBefore(now);
-      boolean available = active && remaining > 0 && !started;
-      return new ScheduleResponse(
+      return ScheduleResponse.of(
           scheduleId,
           popupTitle,
-          date,
-          start,
+          LocalDate.parse(scheduleDate),
+          LocalTime.parse(startTime),
           LocalTime.parse(endTime),
           maxCapacity,
           nowCapacity,
-          remaining,
           active,
-          available,
-          started);
+          now);
     }
   }
 

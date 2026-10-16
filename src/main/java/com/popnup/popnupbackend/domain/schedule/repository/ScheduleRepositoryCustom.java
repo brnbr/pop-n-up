@@ -16,7 +16,7 @@ public interface ScheduleRepositoryCustom {
 
   int tryIncreaseCapacity(Long scheduleId, int count);
 
-  Optional<Schedule> findByIdForValidation(Long id);
+  Optional<Schedule> findWithPopupById(Long id);
 
   int tryDecreaseCapacity(Long scheduleId, int count);
 }
