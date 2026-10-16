@@ -24,6 +24,7 @@ import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservation
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
+import com.popnup.popnupbackend.domain.reservation.service.ReservationBookingService;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -60,6 +61,7 @@ class ReservationControllerTest {
   private ObjectMapper objectMapper;
 
   @InjectMocks private ReservationController reservationController;
+  @Mock private ReservationBookingService reservationBookingService;
   @Mock private ReservationService reservationService;
   @Mock private CheckInService checkInService;
 
@@ -108,9 +110,7 @@ class ReservationControllerTest {
 
       ReservationCreateResponse response = ReservationCreateResponse.from(100L, "R20260915TEST");
 
-      given(
-              reservationService.bookWithConditionalUpdate(
-                  eq(1L), any(ReservationCreateRequest.class)))
+      given(reservationBookingService.book(eq(1L), any(ReservationCreateRequest.class)))
           .willReturn(response);
 
       // when & then
@@ -124,8 +124,7 @@ class ReservationControllerTest {
           .andExpect(jsonPath("$.content.reservationId").value(100L))
           .andExpect(jsonPath("$.content.reservationNumber").value("R20260915TEST"));
 
-      verify(reservationService)
-          .bookWithConditionalUpdate(eq(1L), any(ReservationCreateRequest.class));
+      verify(reservationBookingService).book(eq(1L), any(ReservationCreateRequest.class));
     }
   }
 

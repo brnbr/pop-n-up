@@ -9,6 +9,7 @@ import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservation
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
+import com.popnup.popnupbackend.domain.reservation.service.ReservationBookingService;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import com.popnup.popnupbackend.global.common.ApiResponse;
 import jakarta.validation.Valid;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ReservationController {
 
+  private final ReservationBookingService reservationBookingService;
   private final ReservationService reservationService;
   private final CheckInService checkInService;
 
@@ -35,8 +37,7 @@ public class ReservationController {
       @AuthenticationPrincipal AuthUser authUser,
       @Valid @RequestBody ReservationCreateRequest request) {
     return ResponseEntity.ok(
-        ApiResponse.success(
-            reservationService.bookWithConditionalUpdate(authUser.getId(), request)));
+        ApiResponse.success(reservationBookingService.book(authUser.getId(), request)));
   }
 
   @GetMapping(value = "/reservations/{reservationId}/qr", produces = MediaType.IMAGE_PNG_VALUE)
