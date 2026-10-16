@@ -12,8 +12,8 @@ import static org.mockito.Mockito.verify;
 
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleCapacitySnapshot;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
-import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache.Counter;
-import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache.Restore;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Counter;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityResyncer.Result;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.LocalDate;
@@ -28,15 +28,15 @@ class ScheduleCapacityResyncerTest {
   private static final LocalDate DAY = LocalDate.of(2031, 5, 10);
 
   private ScheduleRepository repository;
-  private ScheduleCapacityCache cache;
+  private ScheduleCapacityCounterStore counterStore;
   private ScheduleCapacityResyncer resyncer;
 
   @BeforeEach
   void setUp() {
     repository = mock(ScheduleRepository.class);
-    cache = mock(ScheduleCapacityCache.class);
-    given(cache.restoreAll(anyList())).willReturn(true);
-    resyncer = new ScheduleCapacityResyncer(repository, cache, new SimpleMeterRegistry());
+    counterStore = mock(ScheduleCapacityCounterStore.class);
+    given(counterStore.restoreAll(anyList())).willReturn(true);
+    resyncer = new ScheduleCapacityResyncer(repository, counterStore, new SimpleMeterRegistry());
   }
 
   /** DB에 회차 하나(id=1, 정원 100, 현재 예약 dbUsed)가 있고 Redis 카운터가 이렇다고 가정 */
@@ -44,13 +44,14 @@ class ScheduleCapacityResyncerTest {
     ScheduleCapacitySnapshot snap = new ScheduleCapacitySnapshot(1L, DAY, 100, (int) dbUsed);
     given(repository.findCapacitySnapshots(any(), anyLong(), any()))
         .willAnswer(inv -> (Long) inv.getArgument(1) == 0L ? List.of(snap) : List.of());
-    given(cache.readCounters(anyList())).willReturn(List.of(new Counter(redisMax, redisUsed)));
+    given(counterStore.readCounters(anyList()))
+        .willReturn(List.of(new Counter(redisMax, redisUsed)));
   }
 
   @SuppressWarnings("unchecked")
   private List<Restore> restoredAtLeastOnce() {
     ArgumentCaptor<List<Restore>> captor = ArgumentCaptor.forClass(List.class);
-    verify(cache, org.mockito.Mockito.atLeastOnce()).restoreAll(captor.capture());
+    verify(counterStore, org.mockito.Mockito.atLeastOnce()).restoreAll(captor.capture());
     return captor.getAllValues().stream().flatMap(List::stream).toList();
   }
 
@@ -122,7 +123,8 @@ class ScheduleCapacityResyncerTest {
 
     assertThat(second.corrected()).isZero();
     assertThat(second.pendingDrift()).isEqualTo(1);
-    verify(cache, never()).restoreAll(org.mockito.ArgumentMatchers.argThat(l -> !l.isEmpty()));
+    verify(counterStore, never())
+        .restoreAll(org.mockito.ArgumentMatchers.argThat(l -> !l.isEmpty()));
   }
 
   @Test
@@ -170,25 +172,25 @@ class ScheduleCapacityResyncerTest {
     ScheduleCapacitySnapshot snap = new ScheduleCapacitySnapshot(1L, DAY, 100, 0);
     given(repository.findCapacitySnapshots(any(), anyLong(), any()))
         .willAnswer(inv -> (Long) inv.getArgument(1) == 0L ? List.of(snap) : List.of());
-    given(cache.readCounters(anyList())).willReturn(null);
+    given(counterStore.readCounters(anyList())).willReturn(null);
 
     Result result = resyncer.resync();
 
     assertThat(result.initialized()).isZero();
     assertThat(result.corrected()).isZero();
-    verify(cache, never()).restoreAll(anyList());
+    verify(counterStore, never()).restoreAll(anyList());
   }
 
   @Test
   @DisplayName("쓰기가 실패하면 성공 건수로 세지 않는다")
   void writeFailure_notCounted() {
     scenario(7, null, null);
-    given(cache.restoreAll(anyList())).willReturn(false);
+    given(counterStore.restoreAll(anyList())).willReturn(false);
 
     Result result = resyncer.resync();
 
     assertThat(result.initialized()).isZero();
-    verify(cache, times(1)).restoreAll(anyList());
+    verify(counterStore, times(1)).restoreAll(anyList());
   }
 
   @Test
@@ -199,6 +201,6 @@ class ScheduleCapacityResyncerTest {
     Result result = resyncer.resync();
 
     assertThat(result.scanned()).isZero();
-    verify(cache, never()).readCounters(anyList());
+    verify(counterStore, never()).readCounters(anyList());
   }
 }

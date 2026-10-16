@@ -75,7 +75,7 @@ public class ReservationService {
       return ReservationCreateResponse.from(
           reservation.getId(), reservation.getReservationNumber());
     } catch (Exception e) {
-      scheduleCapacityCache.compensate(request.getScheduleId(), request.getPersonCount());
+      scheduleCapacityCache.releaseNow(request.getScheduleId(), request.getPersonCount());
       throw e;
     }
   }

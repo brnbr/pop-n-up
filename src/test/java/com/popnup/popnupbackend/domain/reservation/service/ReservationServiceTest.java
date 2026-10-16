@@ -104,7 +104,7 @@ class ReservationServiceTest {
 
       verify(schedule).validateBookable(any(LocalDateTime.class));
       verify(reservationRepository).save(any(Reservation.class));
-      verify(scheduleCapacityCache, never()).compensate(anyLong(), anyInt());
+      verify(scheduleCapacityCache, never()).releaseNow(anyLong(), anyInt());
     }
 
     @Test
@@ -179,7 +179,7 @@ class ReservationServiceTest {
                   assertThat(((ServiceException) e).getErrorCode())
                       .isEqualTo(ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED));
 
-      verify(scheduleCapacityCache, never()).compensate(anyLong(), anyInt());
+      verify(scheduleCapacityCache, never()).releaseNow(anyLong(), anyInt());
     }
 
     @Test
@@ -211,7 +211,7 @@ class ReservationServiceTest {
                   assertThat(((ServiceException) e).getErrorCode())
                       .isEqualTo(ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED));
 
-      verify(scheduleCapacityCache).compensate(scheduleId, personCount);
+      verify(scheduleCapacityCache).releaseNow(scheduleId, personCount);
       verify(reservationRepository, never()).save(any(Reservation.class));
     }
   }

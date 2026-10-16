@@ -2,8 +2,8 @@ package com.popnup.popnupbackend.domain.schedule.service;
 
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleCapacitySnapshot;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
-import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache.Counter;
-import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache.Restore;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Counter;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
 import com.popnup.popnupbackend.domain.schedule.support.KstTime;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.LocalDate;
@@ -24,17 +24,17 @@ public class ScheduleCapacityResyncer {
   private static final int CHUNK_SIZE = 500;
 
   private final ScheduleRepository scheduleRepository;
-  private final ScheduleCapacityCache scheduleCapacityCache;
+  private final ScheduleCapacityCounterStore counterStore;
   private final MeterRegistry meterRegistry;
 
   private final Map<Long, Drift> pendingDrifts = new ConcurrentHashMap<>();
 
   public ScheduleCapacityResyncer(
       ScheduleRepository scheduleRepository,
-      ScheduleCapacityCache scheduleCapacityCache,
+      ScheduleCapacityCounterStore counterStore,
       MeterRegistry meterRegistry) {
     this.scheduleRepository = scheduleRepository;
-    this.scheduleCapacityCache = scheduleCapacityCache;
+    this.counterStore = counterStore;
     this.meterRegistry = meterRegistry;
   }
 
@@ -75,7 +75,7 @@ public class ScheduleCapacityResyncer {
         seen.add(snap.id());
       }
 
-      List<Counter> counters = scheduleCapacityCache.readCounters(ids);
+      List<Counter> counters = counterStore.readCounters(ids);
       if (counters == null) {
         redisUnavailable = true;
         break;
@@ -117,7 +117,7 @@ public class ScheduleCapacityResyncer {
         }
       }
 
-      if (scheduleCapacityCache.restoreAll(restores)) {
+      if (counterStore.restoreAll(restores)) {
         initialized += chunkInitialized;
         corrected += chunkCorrected;
       }

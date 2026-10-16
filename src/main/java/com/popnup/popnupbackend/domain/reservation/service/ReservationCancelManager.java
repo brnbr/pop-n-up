@@ -72,7 +72,7 @@ public class ReservationCancelManager {
       throw ScheduleErrorCode.INVALID_CANCEL_COUNT.toException();
     }
 
-    scheduleCapacityCache.release(target.scheduleId(), target.personCount());
+    scheduleCapacityCache.releaseAfterCommit(target.scheduleId(), target.personCount());
     return true;
   }
 
