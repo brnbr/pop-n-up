@@ -1,10 +1,9 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
 import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.maxKey;
-import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.ttlUntilEndOfDate;
 import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.usedKey;
 
-import java.time.Duration;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
@@ -32,6 +31,10 @@ public class ScheduleCapacityCache {
       loadScript("redis/schedule-capacity-release.lua");
 
   private final StringRedisTemplate redisTemplate;
+  private final ScheduleCapacityCounterStore counterStore;
+
+  /** 새 회차의 Redis 정원 키를 만들기 위한 정보. */
+  public record Init(Long scheduleId, LocalDate scheduleDate, int maxCapacity) {}
 
   private static RedisScript<Long> loadScript(String path) {
     RedisScript<Long> script = RedisScript.of(new ClassPathResource(path), Long.class);
@@ -39,13 +42,21 @@ public class ScheduleCapacityCache {
     return script;
   }
 
-  public void init(Long scheduleId, LocalDate scheduleDate, int maxCapacity) {
-    try {
-      Duration ttl = ttlUntilEndOfDate(scheduleDate);
-      redisTemplate.opsForValue().set(maxKey(scheduleId), String.valueOf(maxCapacity), ttl);
-      redisTemplate.opsForValue().set(usedKey(scheduleId), "0", ttl);
-    } catch (Exception e) {
-      log.warn("[ScheduleCapacityCache] Redis 초기화 실패, DB만으로 동작합니다. scheduleId={}", scheduleId, e);
+  public void initAfterCommit(List<Init> inits) {
+    if (inits.isEmpty()) {
+      return;
+    }
+    runAfterCommit(() -> initAll(inits));
+  }
+
+  private void initAll(List<Init> inits) {
+    List<Restore> restores =
+        inits.stream()
+            .map(init -> new Restore(init.scheduleId(), init.scheduleDate(), init.maxCapacity(), 0))
+            .toList();
+    if (!counterStore.restoreAll(restores)) {
+      log.warn(
+          "[ScheduleCapacityCache] Redis 초기화 실패, DB만으로 동작합니다. 재동기화가 채웁니다. count={}", inits.size());
     }
   }
 
@@ -79,16 +90,20 @@ public class ScheduleCapacityCache {
   }
 
   public void releaseAfterCommit(Long scheduleId, int count) {
+    runAfterCommit(() -> releaseNow(scheduleId, count));
+  }
+
+  private void runAfterCommit(Runnable action) {
     if (TransactionSynchronizationManager.isSynchronizationActive()) {
       TransactionSynchronizationManager.registerSynchronization(
           new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-              releaseNow(scheduleId, count);
+              action.run();
             }
           });
     } else {
-      releaseNow(scheduleId, count);
+      action.run();
     }
   }
 

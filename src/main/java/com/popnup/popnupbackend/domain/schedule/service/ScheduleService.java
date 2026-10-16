@@ -75,8 +75,10 @@ public class ScheduleService {
 
     Schedule savedSchedule = scheduleRepository.save(schedule);
 
-    scheduleCapacityCache.init(
-        savedSchedule.getId(), savedSchedule.getScheduleDate(), request.getMaxCapacity());
+    scheduleCapacityCache.initAfterCommit(
+        List.of(
+            new ScheduleCapacityCache.Init(
+                savedSchedule.getId(), savedSchedule.getScheduleDate(), request.getMaxCapacity())));
     scheduleListCache.evictAfterCommit(popup.getId(), savedSchedule.getScheduleDate());
 
     return savedSchedule.getId();
@@ -104,10 +106,13 @@ public class ScheduleService {
 
     List<Schedule> savedSchedules = scheduleRepository.saveAll(schedules);
 
-    for (Schedule savedSchedule : savedSchedules) {
-      scheduleCapacityCache.init(
-          savedSchedule.getId(), savedSchedule.getScheduleDate(), request.getMaxCapacity());
-    }
+    scheduleCapacityCache.initAfterCommit(
+        savedSchedules.stream()
+            .map(
+                saved ->
+                    new ScheduleCapacityCache.Init(
+                        saved.getId(), saved.getScheduleDate(), request.getMaxCapacity()))
+            .toList());
     scheduleListCache.evictAfterCommit(popup.getId(), request.getScheduleDate());
     return schedules.size();
   }

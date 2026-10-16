@@ -1,23 +1,35 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache.Init;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class ScheduleCapacityCacheTest {
 
   private StringRedisTemplate redisTemplate;
   private ValueOperations<String, String> valueOps;
+  private ScheduleCapacityCounterStore counterStore;
   private ScheduleCapacityCache cache;
 
   @SuppressWarnings("unchecked")
@@ -26,7 +38,13 @@ class ScheduleCapacityCacheTest {
     redisTemplate = mock(StringRedisTemplate.class);
     valueOps = mock(ValueOperations.class);
     given(redisTemplate.opsForValue()).willReturn(valueOps);
-    cache = new ScheduleCapacityCache(redisTemplate);
+    counterStore = mock(ScheduleCapacityCounterStore.class);
+    cache = new ScheduleCapacityCache(redisTemplate, counterStore);
+  }
+
+  @AfterEach
+  void clearSynchronization() {
+    TransactionSynchronizationManager.clear();
   }
 
   // multiGet 순서: [max, used]
@@ -100,6 +118,72 @@ class ScheduleCapacityCacheTest {
       given(valueOps.multiGet(anyList())).willReturn(List.of());
 
       assertThat(cache.isSoldOut(1L, 1)).isFalse();
+    }
+  }
+
+  @Nested
+  @DisplayName("회차 정원 키 초기화 [initAfterCommit]")
+  class InitAfterCommitTest {
+
+    private final LocalDate date = LocalDate.of(2031, 5, 10);
+
+    @Test
+    @DisplayName("트랜잭션 밖이면 바로, 여러 회차를 한 번에 쓴다 (정원 + 사용량 0)")
+    void outsideTransaction_writesAllAtOnce() {
+      given(counterStore.restoreAll(anyList())).willReturn(true);
+
+      cache.initAfterCommit(List.of(new Init(1L, date, 30), new Init(2L, date, 20)));
+
+      verify(counterStore, times(1))
+          .restoreAll(List.of(new Restore(1L, date, 30, 0), new Restore(2L, date, 20, 0)));
+    }
+
+    @Test
+    @DisplayName("트랜잭션 안이면 커밋 전에는 쓰지 않고, 커밋 뒤에 한 번만 쓴다")
+    void insideTransaction_writesOnlyAfterCommit() {
+      given(counterStore.restoreAll(anyList())).willReturn(true);
+      TransactionSynchronizationManager.initSynchronization();
+
+      cache.initAfterCommit(List.of(new Init(1L, date, 30)));
+      verify(counterStore, never()).restoreAll(anyList());
+
+      for (TransactionSynchronization synchronization :
+          TransactionSynchronizationManager.getSynchronizations()) {
+        synchronization.afterCommit();
+      }
+
+      verify(counterStore, times(1)).restoreAll(List.of(new Restore(1L, date, 30, 0)));
+    }
+
+    @Test
+    @DisplayName("롤백되면 Redis에 쓰지 않는다 (없는 회차의 키가 남지 않는다)")
+    void rollback_neverWrites() {
+      TransactionSynchronizationManager.initSynchronization();
+
+      cache.initAfterCommit(List.of(new Init(1L, date, 30)));
+      for (TransactionSynchronization synchronization :
+          TransactionSynchronizationManager.getSynchronizations()) {
+        synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+      }
+
+      verify(counterStore, never()).restoreAll(anyList());
+    }
+
+    @Test
+    @DisplayName("쓰기가 실패해도 예외를 던지지 않는다 (DB만으로 동작하고 재동기화가 채운다)")
+    void writeFailure_doesNotThrow() {
+      given(counterStore.restoreAll(anyList())).willReturn(false);
+
+      assertThatCode(() -> cache.initAfterCommit(List.of(new Init(1L, date, 30))))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("빈 목록이면 아무것도 하지 않는다")
+    void emptyList_doesNothing() {
+      cache.initAfterCommit(List.of());
+
+      verifyNoInteractions(counterStore);
     }
   }
 }

@@ -89,7 +89,9 @@ class ScheduleServiceTest {
       // then
       assertThat(createdId).isEqualTo(100L);
       verify(scheduleRepository).save(any(Schedule.class));
-      verify(scheduleCapacityCache).init(100L, scheduleDate, maxCapacity);
+      verify(scheduleCapacityCache)
+          .initAfterCommit(
+              List.of(new ScheduleCapacityCache.Init(100L, scheduleDate, maxCapacity)));
     }
 
     @Test
@@ -242,10 +244,13 @@ class ScheduleServiceTest {
       // when
       scheduleService.createBatchSchedules(request);
 
-      // then: 3개 슬롯 모두 초기화되어야 한다
-      verify(scheduleCapacityCache).init(100L, scheduleDate, maxCapacity);
-      verify(scheduleCapacityCache).init(101L, scheduleDate, maxCapacity);
-      verify(scheduleCapacityCache).init(102L, scheduleDate, maxCapacity);
+      // then: 3개 슬롯이 한 번의 호출로 모두 초기화되어야 한다
+      verify(scheduleCapacityCache, times(1))
+          .initAfterCommit(
+              List.of(
+                  new ScheduleCapacityCache.Init(100L, scheduleDate, maxCapacity),
+                  new ScheduleCapacityCache.Init(101L, scheduleDate, maxCapacity),
+                  new ScheduleCapacityCache.Init(102L, scheduleDate, maxCapacity)));
     }
 
     @Test
