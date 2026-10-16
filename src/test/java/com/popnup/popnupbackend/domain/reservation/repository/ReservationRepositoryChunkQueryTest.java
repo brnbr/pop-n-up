@@ -13,6 +13,7 @@ import com.popnup.popnupbackend.global.config.QuerydslConfig;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -157,5 +158,26 @@ class ReservationRepositoryChunkQueryTest {
                 saved.getReservationNumber()))
         .isPresent();
     assertThat(reservationRepository.findByIdWithPessimisticLock(-1L)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("관리자 예약 목록: 같은 회차의 예약도 페이지를 넘겨 조회하면 중복·누락 없이 id 순으로 이어진다")
+  void findAdminReservations_stablePaging() {
+    Schedule schedule = schedule(LocalDate.now().plusDays(3));
+    List<Long> expected = new ArrayList<>();
+    for (int i = 0; i < 5; i++) {
+      expected.add(reservation(schedule, false).getId());
+    }
+    em.flush();
+    em.clear();
+
+    List<Long> paged = new ArrayList<>();
+    for (int page = 0; page < 3; page++) {
+      reservationRepository.findAdminReservations(popup.getId(), null, null, page, 2).stream()
+          .map(Reservation::getId)
+          .forEach(paged::add);
+    }
+
+    assertThat(paged).containsExactlyElementsOf(expected);
   }
 }

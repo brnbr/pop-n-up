@@ -30,13 +30,15 @@ class ScheduleCapacityResyncerTest {
   private ScheduleRepository repository;
   private ScheduleCapacityCounterStore counterStore;
   private ScheduleCapacityResyncer resyncer;
+  private SimpleMeterRegistry meterRegistry;
 
   @BeforeEach
   void setUp() {
     repository = mock(ScheduleRepository.class);
     counterStore = mock(ScheduleCapacityCounterStore.class);
     given(counterStore.restoreAll(anyList())).willReturn(true);
-    resyncer = new ScheduleCapacityResyncer(repository, counterStore, new SimpleMeterRegistry());
+    meterRegistry = new SimpleMeterRegistry();
+    resyncer = new ScheduleCapacityResyncer(repository, counterStore, meterRegistry);
   }
 
   /** DB에 회차 하나(id=1, 정원 100, 현재 예약 dbUsed)가 있고 Redis 카운터가 이렇다고 가정 */
@@ -202,5 +204,22 @@ class ScheduleCapacityResyncerTest {
 
     assertThat(result.scanned()).isZero();
     verify(counterStore, never()).readCounters(anyList());
+  }
+
+  private double maxAbsDriftGauge() {
+    return meterRegistry.get("schedule.capacity.resync.max.abs.drift").gauge().value();
+  }
+
+  @Test
+  @DisplayName("최대 어긋남 게이지는 매 사이클의 최신 값을 보여준다")
+  void maxAbsDriftGauge_followsLatestCycle() {
+    scenario(0, 100L, 50L);
+    resyncer.resync();
+    assertThat(maxAbsDriftGauge()).isEqualTo(50.0);
+
+    scenario(0, 100L, 0L); // 일치로 돌아옴
+    resyncer.resync();
+
+    assertThat(maxAbsDriftGauge()).isZero();
   }
 }

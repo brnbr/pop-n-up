@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,7 @@ public class ScheduleCapacityResyncer {
   private final MeterRegistry meterRegistry;
 
   private final Map<Long, Drift> pendingDrifts = new ConcurrentHashMap<>();
+  private final AtomicLong lastMaxAbsDrift = new AtomicLong();
 
   public ScheduleCapacityResyncer(
       ScheduleRepository scheduleRepository,
@@ -37,6 +39,7 @@ public class ScheduleCapacityResyncer {
     this.scheduleRepository = scheduleRepository;
     this.counterStore = counterStore;
     this.meterRegistry = meterRegistry;
+    meterRegistry.gauge("schedule.capacity.resync.max.abs.drift", lastMaxAbsDrift);
   }
 
   private record Drift(Long redisMax, Long redisUsed, int dbMax, int dbUsed) {}
@@ -170,7 +173,7 @@ public class ScheduleCapacityResyncer {
         .counter("schedule.capacity.resync", "result", "corrected")
         .increment(tally.corrected);
     meterRegistry.counter("schedule.capacity.resync", "result", "pending").increment(tally.pending);
-    meterRegistry.gauge("schedule.capacity.resync.max.abs.drift", tally.maxAbsDrift);
+    lastMaxAbsDrift.set(tally.maxAbsDrift);
   }
 
   private void logResult(Tally tally, long durationMs) {

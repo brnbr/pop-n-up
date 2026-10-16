@@ -67,7 +67,10 @@ public class ReservationRepositoryCustomImpl implements ReservationRepositoryCus
         .join(schedule.popup, popup)
         .fetchJoin()
         .where(popupIdEq(popupId), scheduleDateEq(scheduleDate), statusEq(status))
-        .orderBy(reservation.schedule.scheduleDate.asc(), reservation.schedule.startTime.asc())
+        .orderBy(
+            reservation.schedule.scheduleDate.asc(),
+            reservation.schedule.startTime.asc(),
+            reservation.id.asc())
         .offset((long) page * size)
         .limit(size)
         .fetch();
