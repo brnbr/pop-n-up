@@ -60,88 +60,114 @@ class ReservationRepositoryChunkQueryTest {
     Reservation reservation =
         Reservation.createReservation("R-TEST-" + sequence, member, schedule, 1);
     if (confirmed) {
-      reservation.confirm(true);
+      reservation.confirm();
     }
     return em.persist(reservation);
   }
 
   @Test
-  @DisplayName("결제 대기 만료 청크: 기준 시각 이전의 PENDING만, id 오름차순으로, 청크 크기만큼 조회한다")
+  @DisplayName("진행 중 예약 확인: active_member_id로 판단해 PENDING·CONFIRMED·USED는 진행 중이고, 취소되면 진행 중이 아니다")
+  void hasActiveReservation() {
+    Schedule schedule = schedule(LocalDate.now().plusDays(3));
+    Schedule otherSchedule = schedule(LocalDate.now().plusDays(4));
+    Reservation pending = reservation(schedule, false);
+    Reservation confirmed = reservation(schedule, true);
+    Reservation used = reservation(schedule, true);
+    Reservation canceled = reservation(schedule, true);
+    em.flush();
+    reservationRepository.tryUpdateStatus(
+        used.getId(), ReservationStatus.USED, List.of(ReservationStatus.CONFIRMED));
+    reservationRepository.tryUpdateStatus(
+        canceled.getId(), ReservationStatus.CANCELED, List.of(ReservationStatus.CONFIRMED));
+    em.clear();
+
+    for (Reservation active : List.of(pending, confirmed, used)) {
+      assertThat(
+              reservationRepository.hasActiveReservation(
+                  schedule.getId(), active.getMember().getId()))
+          .isTrue();
+    }
+    assertThat(
+            reservationRepository.hasActiveReservation(
+                schedule.getId(), canceled.getMember().getId()))
+        .isFalse();
+    assertThat(
+            reservationRepository.hasActiveReservation(
+                otherSchedule.getId(), pending.getMember().getId()))
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("결제 대기 만료 청크: 기준 시각 이전의 PENDING만, 커서(id) 뒤부터 id 오름차순으로, 청크 크기만큼 조회한다")
   void findPendingReservationsChunk() {
     Schedule schedule = schedule(LocalDate.now().plusDays(3));
     Reservation first = reservation(schedule, false);
     Reservation second = reservation(schedule, false);
-    reservation(schedule, false);
+    Reservation third = reservation(schedule, false);
     reservation(schedule, true);
     em.flush();
     em.clear();
 
     LocalDateTime deadline = LocalDateTime.now().plusMinutes(1);
     List<Reservation> chunk =
-        reservationRepository.findPendingReservationsChunk(ReservationStatus.PENDING, deadline, 2);
+        reservationRepository.findPendingReservationsChunk(
+            ReservationStatus.PENDING, deadline, 0L, 2);
+    List<Reservation> afterFirst =
+        reservationRepository.findPendingReservationsChunk(
+            ReservationStatus.PENDING, deadline, first.getId(), 10);
 
     assertThat(chunk).extracting(Reservation::getId).containsExactly(first.getId(), second.getId());
+    assertThat(afterFirst)
+        .extracting(Reservation::getId)
+        .containsExactly(second.getId(), third.getId());
     assertThat(
             reservationRepository.findPendingReservationsChunk(
-                ReservationStatus.PENDING, LocalDateTime.now().minusHours(1), 10))
+                ReservationStatus.PENDING, LocalDateTime.now().minusHours(1), 0L, 10))
         .isEmpty();
   }
 
   @Test
-  @DisplayName("결제 대기 만료 잠금 청크: 같은 조건으로 조회된다")
-  void findPendingReservationsChunkForUpdate() {
-    Schedule schedule = schedule(LocalDate.now().plusDays(3));
-    Reservation first = reservation(schedule, false);
-    Reservation second = reservation(schedule, false);
-    reservation(schedule, true);
+  @DisplayName(
+      "노쇼 만료 벌크: 기준 시각보다 먼저 시작한 회차의 CONFIRMED만 EXPIRED로 바꾸고 활성 슬롯을 비운다 (그 뒤 시작 회차, PENDING 제외)")
+  void expirePastConfirmedReservations() {
+    LocalDate today = LocalDate.now();
+    Schedule yesterday = schedule(today.minusDays(1));
+    Schedule todayAtTen = schedule(today);
+    Schedule tomorrow = schedule(today.plusDays(1));
+    Reservation expiredFirst = reservation(yesterday, true);
+    Reservation expiredSecond = reservation(yesterday, true);
+    Reservation todayConfirmed = reservation(todayAtTen, true);
+    Reservation tomorrowConfirmed = reservation(tomorrow, true);
+    Reservation yesterdayPending = reservation(yesterday, false);
     em.flush();
     em.clear();
 
-    List<Reservation> chunk =
-        reservationRepository.findPendingReservationsChunkForUpdate(
-            ReservationStatus.PENDING, LocalDateTime.now().plusMinutes(1), 10);
-
-    assertThat(chunk).extracting(Reservation::getId).containsExactly(first.getId(), second.getId());
-  }
-
-  @Test
-  @DisplayName("미방문 만료 청크: 지난 회차의 CONFIRMED만 조회한다 (미래 회차, PENDING 제외)")
-  void findExpiredReservationsChunk() {
-    Schedule past = schedule(LocalDate.now().minusDays(1));
-    Schedule future = schedule(LocalDate.now().plusDays(1));
-    Reservation expiredFirst = reservation(past, true);
-    Reservation expiredSecond = reservation(past, true);
-    reservation(future, true);
-    reservation(past, false);
-    em.flush();
+    // 기준 시각이 시작 시각과 같으면 아직 만료하지 않는다
+    long expired =
+        reservationRepository.expirePastConfirmedReservations(LocalDateTime.of(today, TEN));
     em.clear();
 
-    List<Reservation> chunk =
-        reservationRepository.findExpiredReservationsChunk(LocalDate.now(), LocalTime.now(), 10);
+    assertThat(expired).isEqualTo(2);
+    for (Reservation target : List.of(expiredFirst, expiredSecond)) {
+      Reservation found = em.find(Reservation.class, target.getId());
+      assertThat(found.getStatus()).isEqualTo(ReservationStatus.EXPIRED);
+      assertThat(found.getActiveMemberId()).isNull();
+    }
+    assertThat(em.find(Reservation.class, todayConfirmed.getId()).getStatus())
+        .isEqualTo(ReservationStatus.CONFIRMED);
+    assertThat(em.find(Reservation.class, tomorrowConfirmed.getId()).getStatus())
+        .isEqualTo(ReservationStatus.CONFIRMED);
+    assertThat(em.find(Reservation.class, yesterdayPending.getId()).getStatus())
+        .isEqualTo(ReservationStatus.PENDING);
 
-    assertThat(chunk)
-        .extracting(Reservation::getId)
-        .containsExactly(expiredFirst.getId(), expiredSecond.getId());
+    // 기준 시각이 시작 시각을 넘으면 오늘 회차도 만료한다
     assertThat(
-            reservationRepository.findExpiredReservationsChunk(LocalDate.now(), LocalTime.now(), 1))
-        .hasSize(1);
-  }
-
-  @Test
-  @DisplayName("미방문 만료 잠금 청크: 같은 조건으로 조회된다")
-  void findExpiredReservationsChunkForUpdate() {
-    Schedule past = schedule(LocalDate.now().minusDays(1));
-    Schedule future = schedule(LocalDate.now().plusDays(1));
-    Reservation expired = reservation(past, true);
-    reservation(future, true);
-    em.flush();
+            reservationRepository.expirePastConfirmedReservations(
+                LocalDateTime.of(today, TEN.plusMinutes(1))))
+        .isEqualTo(1);
     em.clear();
-
-    List<Reservation> chunk =
-        reservationRepository.findExpiredReservationsChunkForUpdate(
-            LocalDate.now(), LocalTime.now(), 10);
-
-    assertThat(chunk).extracting(Reservation::getId).containsExactly(expired.getId());
+    assertThat(em.find(Reservation.class, todayConfirmed.getId()).getStatus())
+        .isEqualTo(ReservationStatus.EXPIRED);
   }
 
   @Test

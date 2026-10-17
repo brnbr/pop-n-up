@@ -1,11 +1,10 @@
 package com.popnup.popnupbackend.domain.reservation.controller;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
-import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
-import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
-import com.popnup.popnupbackend.domain.qrcode.service.CheckInService;
+import com.popnup.popnupbackend.domain.reservation.dto.request.CheckInRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
+import com.popnup.popnupbackend.domain.reservation.dto.response.CheckInResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
@@ -30,7 +29,6 @@ public class ReservationController {
 
   private final ReservationBookingService reservationBookingService;
   private final ReservationService reservationService;
-  private final CheckInService checkInService;
 
   @PostMapping("/reservations")
   public ResponseEntity<ApiResponse<ReservationCreateResponse>> createReservation(
@@ -54,7 +52,7 @@ public class ReservationController {
   @PostMapping("/admin/reservations/check-in")
   public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
       @Valid @RequestBody CheckInRequest request) {
-    return ResponseEntity.ok(ApiResponse.success(checkInService.checkIn(request)));
+    return ResponseEntity.ok(ApiResponse.success(reservationService.checkIn(request)));
   }
 
   @DeleteMapping("/reservations/{reservationId}")

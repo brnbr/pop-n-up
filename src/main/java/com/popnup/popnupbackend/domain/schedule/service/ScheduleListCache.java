@@ -1,7 +1,5 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.popnup.popnupbackend.domain.schedule.dto.response.ScheduleResponse;
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -17,6 +15,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
 @Component
@@ -25,17 +25,17 @@ public class ScheduleListCache {
   private static final String KEY_PREFIX = "schedule:list:";
 
   private final StringRedisTemplate redisTemplate;
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
   private final MeterRegistry meterRegistry;
   private final Duration ttl;
 
   public ScheduleListCache(
       StringRedisTemplate redisTemplate,
-      ObjectMapper objectMapper,
+      JsonMapper jsonMapper,
       MeterRegistry meterRegistry,
       @Value("${schedule.list-cache.ttl-seconds:0}") long ttlSeconds) {
     this.redisTemplate = redisTemplate;
-    this.objectMapper = objectMapper;
+    this.jsonMapper = jsonMapper;
     this.meterRegistry = meterRegistry;
     this.ttl = Duration.ofSeconds(Math.max(ttlSeconds, 0));
   }
@@ -43,9 +43,9 @@ public class ScheduleListCache {
   public record Snapshot(
       Long scheduleId,
       String popupTitle,
-      String scheduleDate,
-      String startTime,
-      String endTime,
+      LocalDate scheduleDate,
+      LocalTime startTime,
+      LocalTime endTime,
       int maxCapacity,
       int nowCapacity,
       boolean active) {
@@ -54,9 +54,9 @@ public class ScheduleListCache {
       return new Snapshot(
           s.getId(),
           s.getPopup().getTitle(),
-          s.getScheduleDate().toString(),
-          s.getStartTime().toString(),
-          s.getEndTime().toString(),
+          s.getScheduleDate(),
+          s.getStartTime(),
+          s.getEndTime(),
           s.getMaxCapacity(),
           s.getNowCapacity(),
           s.isActive());
@@ -66,9 +66,9 @@ public class ScheduleListCache {
       return ScheduleResponse.of(
           scheduleId,
           popupTitle,
-          LocalDate.parse(scheduleDate),
-          LocalTime.parse(startTime),
-          LocalTime.parse(endTime),
+          scheduleDate,
+          startTime,
+          endTime,
           maxCapacity,
           nowCapacity,
           active,
@@ -88,7 +88,7 @@ public class ScheduleListCache {
         return Optional.empty();
       }
       count("hit");
-      return Optional.of(objectMapper.readValue(json, new TypeReference<List<Snapshot>>() {}));
+      return Optional.of(jsonMapper.readValue(json, new TypeReference<List<Snapshot>>() {}));
     } catch (Exception e) {
       count("error");
       log.warn("[ScheduleListCache] 조회 실패, DB로 대체합니다. popupId={}, date={}", popupId, date, e);
@@ -101,7 +101,7 @@ public class ScheduleListCache {
       List<Snapshot> snapshots = schedules.stream().map(Snapshot::from).toList();
       redisTemplate
           .opsForValue()
-          .set(key(popupId, date), objectMapper.writeValueAsString(snapshots), ttl);
+          .set(key(popupId, date), jsonMapper.writeValueAsString(snapshots), ttl);
     } catch (Exception e) {
       log.warn("[ScheduleListCache] 저장 실패 popupId={}, date={}", popupId, date, e);
     }
@@ -128,11 +128,7 @@ public class ScheduleListCache {
     try {
       redisTemplate.delete(key(popupId, date));
     } catch (Exception e) {
-      log.warn(
-          "[ScheduleListCache] 삭제 실패, TTL 만료까지 이전 값이 보일 수 있습니다. popupId={}, date={}",
-          popupId,
-          date,
-          e);
+      log.warn("[ScheduleListCache] 삭제 실패 popupId={}, date={}", popupId, date, e);
     }
   }
 

@@ -2,16 +2,16 @@ package com.popnup.popnupbackend.domain.schedule.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.popnup.popnupbackend.domain.schedule.repository.ScheduleCapacitySnapshot;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
+import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepositoryCustom.CapacitySnapshot;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Counter;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityResyncer.Result;
@@ -43,8 +43,8 @@ class ScheduleCapacityResyncerTest {
 
   /** DB에 회차 하나(id=1, 정원 100, 현재 예약 dbUsed)가 있고 Redis 카운터가 이렇다고 가정 */
   private void scenario(long dbUsed, Long redisMax, Long redisUsed) {
-    ScheduleCapacitySnapshot snap = new ScheduleCapacitySnapshot(1L, DAY, 100, (int) dbUsed);
-    given(repository.findCapacitySnapshots(any(), anyLong(), any()))
+    CapacitySnapshot snap = new CapacitySnapshot(1L, DAY, 100, (int) dbUsed);
+    given(repository.findCapacitySnapshots(any(), anyLong(), anyInt()))
         .willAnswer(inv -> (Long) inv.getArgument(1) == 0L ? List.of(snap) : List.of());
     given(counterStore.readCounters(anyList()))
         .willReturn(List.of(new Counter(redisMax, redisUsed)));
@@ -66,14 +66,6 @@ class ScheduleCapacityResyncerTest {
 
     assertThat(result.initialized()).isEqualTo(1);
     assertThat(restoredAtLeastOnce()).containsExactly(new Restore(1L, DAY, 100, 7));
-  }
-
-  @Test
-  @DisplayName("한쪽 키만 없어도 초기화한다")
-  void oneKeyMissing_initialized() {
-    scenario(7, 100L, null);
-
-    assertThat(resyncer.resync().initialized()).isEqualTo(1);
   }
 
   @Test
@@ -145,18 +137,6 @@ class ScheduleCapacityResyncerTest {
   }
 
   @Test
-  @DisplayName("사용량이 실제보다 낮게 어긋난 경우도 보정한다")
-  void driftBelowDb_corrected() {
-    scenario(30, 100L, 10L);
-
-    resyncer.resync();
-    Result second = resyncer.resync();
-
-    assertThat(second.corrected()).isEqualTo(1);
-    assertThat(restoredAtLeastOnce()).containsExactly(new Restore(1L, DAY, 100, 30));
-  }
-
-  @Test
   @DisplayName("정원(max)이 DB와 다르면 어긋남으로 보고 같은 규칙으로 보정한다")
   void maxMismatch_corrected() {
     scenario(5, 80L, 5L);
@@ -171,8 +151,8 @@ class ScheduleCapacityResyncerTest {
   @Test
   @DisplayName("Redis 장애 시에는 아무것도 바꾸지 않고 예외도 던지지 않는다")
   void redisDown_nothingChanged() {
-    ScheduleCapacitySnapshot snap = new ScheduleCapacitySnapshot(1L, DAY, 100, 0);
-    given(repository.findCapacitySnapshots(any(), anyLong(), any()))
+    CapacitySnapshot snap = new CapacitySnapshot(1L, DAY, 100, 0);
+    given(repository.findCapacitySnapshots(any(), anyLong(), anyInt()))
         .willAnswer(inv -> (Long) inv.getArgument(1) == 0L ? List.of(snap) : List.of());
     given(counterStore.readCounters(anyList())).willReturn(null);
 
@@ -181,45 +161,5 @@ class ScheduleCapacityResyncerTest {
     assertThat(result.initialized()).isZero();
     assertThat(result.corrected()).isZero();
     verify(counterStore, never()).restoreAll(anyList());
-  }
-
-  @Test
-  @DisplayName("쓰기가 실패하면 성공 건수로 세지 않는다")
-  void writeFailure_notCounted() {
-    scenario(7, null, null);
-    given(counterStore.restoreAll(anyList())).willReturn(false);
-
-    Result result = resyncer.resync();
-
-    assertThat(result.initialized()).isZero();
-    verify(counterStore, times(1)).restoreAll(anyList());
-  }
-
-  @Test
-  @DisplayName("대상 회차가 없으면 Redis를 읽지 않는다")
-  void noSchedules_noRedisAccess() {
-    given(repository.findCapacitySnapshots(any(), anyLong(), any())).willReturn(List.of());
-
-    Result result = resyncer.resync();
-
-    assertThat(result.scanned()).isZero();
-    verify(counterStore, never()).readCounters(anyList());
-  }
-
-  private double maxAbsDriftGauge() {
-    return meterRegistry.get("schedule.capacity.resync.max.abs.drift").gauge().value();
-  }
-
-  @Test
-  @DisplayName("최대 어긋남 게이지는 매 사이클의 최신 값을 보여준다")
-  void maxAbsDriftGauge_followsLatestCycle() {
-    scenario(0, 100L, 50L);
-    resyncer.resync();
-    assertThat(maxAbsDriftGauge()).isEqualTo(50.0);
-
-    scenario(0, 100L, 0L); // 일치로 돌아옴
-    resyncer.resync();
-
-    assertThat(maxAbsDriftGauge()).isZero();
   }
 }

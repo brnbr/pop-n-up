@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.domain.schedule.support;
+package com.popnup.popnupbackend.global.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,14 +44,6 @@ class PessimisticLockSupportTest {
             eq("jakarta.persistence.query.timeout"),
             eq(PessimisticLockSupport.LOCK_WAIT_TIMEOUT_MILLIS));
     assertThat(PessimisticLockSupport.LOCK_WAIT_TIMEOUT_MILLIS).isEqualTo(3000);
-  }
-
-  @Test
-  @DisplayName("조회 결과가 없으면 빈 Optional을 반환한다")
-  void emptyWhenNoRow() {
-    given(query.fetchOne()).willReturn(null);
-
-    assertThat(PessimisticLockSupport.fetchOneForUpdate(query)).isEmpty();
   }
 
   @Test

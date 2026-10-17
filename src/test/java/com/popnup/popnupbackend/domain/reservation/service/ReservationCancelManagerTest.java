@@ -25,6 +25,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 
 class ReservationCancelManagerTest {
 
@@ -35,7 +38,7 @@ class ReservationCancelManagerTest {
   private ScheduleRepository scheduleRepository;
   private ReservationRepository reservationRepository;
   private ScheduleCapacityCache scheduleCapacityCache;
-  private ReservationStatusReader reservationStatusReader;
+  private PlatformTransactionManager transactionManager;
   private ReservationCancelManager manager;
 
   @BeforeEach
@@ -43,13 +46,10 @@ class ReservationCancelManagerTest {
     scheduleRepository = mock(ScheduleRepository.class);
     reservationRepository = mock(ReservationRepository.class);
     scheduleCapacityCache = mock(ScheduleCapacityCache.class);
-    reservationStatusReader = mock(ReservationStatusReader.class);
+    transactionManager = mock(PlatformTransactionManager.class);
     manager =
         new ReservationCancelManager(
-            scheduleRepository,
-            reservationRepository,
-            scheduleCapacityCache,
-            reservationStatusReader);
+            scheduleRepository, reservationRepository, scheduleCapacityCache, transactionManager);
     given(reservationRepository.findScheduleAndPersonCount(RESERVATION_ID))
         .willReturn(Optional.of(new ScheduleAndPersonCount(SCHEDULE_ID, PERSON_COUNT)));
   }
@@ -59,7 +59,7 @@ class ReservationCancelManagerTest {
   }
 
   private void freshStatusIs(ReservationStatus status) {
-    given(reservationStatusReader.getFreshStatus(RESERVATION_ID)).willReturn(Optional.of(status));
+    given(reservationRepository.findStatusById(RESERVATION_ID)).willReturn(Optional.of(status));
   }
 
   private void assertErrorCode(Runnable action, Object expected) {
@@ -91,17 +91,6 @@ class ReservationCancelManagerTest {
     given(scheduleRepository.tryDecreaseCapacity(SCHEDULE_ID, PERSON_COUNT)).willReturn(1);
 
     assertThat(manager.expirePaymentTimeout(RESERVATION_ID)).isTrue();
-
-    verify(scheduleCapacityCache).releaseAfterCommit(SCHEDULE_ID, PERSON_COUNT);
-  }
-
-  @Test
-  @DisplayName("미방문 만료: CONFIRMED에서 EXPIRED로만 바꾼다")
-  void expireNoShow_onlyFromConfirmed() {
-    updateResult(ReservationStatus.EXPIRED, List.of(ReservationStatus.CONFIRMED), 1);
-    given(scheduleRepository.tryDecreaseCapacity(SCHEDULE_ID, PERSON_COUNT)).willReturn(1);
-
-    assertThat(manager.expireNoShow(RESERVATION_ID)).isTrue();
 
     verify(scheduleCapacityCache).releaseAfterCommit(SCHEDULE_ID, PERSON_COUNT);
   }
@@ -163,22 +152,6 @@ class ReservationCancelManagerTest {
         () -> manager.cancel(RESERVATION_ID), ReservationErrorCode.ALREADY_PROCESSED_RESERVATION);
   }
 
-  @ParameterizedTest
-  @EnumSource(
-      value = ReservationStatus.class,
-      names = {"PENDING", "CONFIRMED"})
-  @DisplayName("상태 변경이 0건인데 허용 상태(PENDING/CONFIRMED)면 INVALID_RESERVATION_STATUS")
-  void failedButAllowedStatus_invalidStatus(ReservationStatus current) {
-    updateResult(
-        ReservationStatus.CANCELED,
-        List.of(ReservationStatus.PENDING, ReservationStatus.CONFIRMED),
-        0);
-    freshStatusIs(current);
-
-    assertErrorCode(
-        () -> manager.cancel(RESERVATION_ID), ReservationErrorCode.INVALID_RESERVATION_STATUS);
-  }
-
   @Test
   @DisplayName("상태 변경이 0건이고 허용 상태가 아니면 INVALID_RESERVATION_STATUS (결제 만료는 PENDING만 허용)")
   void failedAndNotAllowedStatus_invalidStatus() {
@@ -197,9 +170,27 @@ class ReservationCancelManagerTest {
         ReservationStatus.CANCELED,
         List.of(ReservationStatus.PENDING, ReservationStatus.CONFIRMED),
         0);
-    given(reservationStatusReader.getFreshStatus(RESERVATION_ID)).willReturn(Optional.empty());
+    given(reservationRepository.findStatusById(RESERVATION_ID)).willReturn(Optional.empty());
 
     assertErrorCode(
         () -> manager.cancel(RESERVATION_ID), ReservationErrorCode.RESERVATION_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName("상태 변경이 0건일 때 최신 상태는 새 트랜잭션(REQUIRES_NEW)에서 읽는다")
+  void freshStatus_readInNewTransaction() {
+    updateResult(
+        ReservationStatus.CANCELED,
+        List.of(ReservationStatus.PENDING, ReservationStatus.CONFIRMED),
+        0);
+    freshStatusIs(ReservationStatus.CANCELED);
+
+    manager.cancel(RESERVATION_ID);
+
+    ArgumentCaptor<TransactionDefinition> definition =
+        ArgumentCaptor.forClass(TransactionDefinition.class);
+    verify(transactionManager).getTransaction(definition.capture());
+    assertThat(definition.getValue().getPropagationBehavior())
+        .isEqualTo(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
   }
 }

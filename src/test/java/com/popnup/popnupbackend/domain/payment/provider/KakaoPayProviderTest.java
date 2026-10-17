@@ -87,7 +87,7 @@ class KakaoPayProviderTest {
 
     assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PAID);
 
-    verify(reservationService).confirmReservation(1L, true);
+    verify(reservationService).confirmReservation(1L);
   }
 
   @Test
@@ -103,7 +103,7 @@ class KakaoPayProviderTest {
     verify(restTemplate, never())
         .postForEntity(any(String.class), any(HttpEntity.class), eq(KakaoPayApproveResponse.class));
 
-    verify(reservationService, never()).confirmReservation(anyLong(), anyBoolean());
+    verify(reservationService, never()).confirmReservation(anyLong());
   }
 
   @Test
@@ -117,7 +117,7 @@ class KakaoPayProviderTest {
     verify(restTemplate, never())
         .postForEntity(any(String.class), any(HttpEntity.class), eq(KakaoPayApproveResponse.class));
 
-    verify(reservationService, never()).confirmReservation(anyLong(), anyBoolean());
+    verify(reservationService, never()).confirmReservation(anyLong());
   }
 
   @Test
@@ -142,7 +142,7 @@ class KakaoPayProviderTest {
 
     assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
 
-    verify(reservationService, never()).confirmReservation(anyLong(), anyBoolean());
+    verify(reservationService, never()).confirmReservation(anyLong());
   }
 
   @Test
@@ -223,7 +223,7 @@ class KakaoPayProviderTest {
             eq(KakaoPayApproveResponse.class)))
         .thenReturn(ResponseEntity.ok(kakaoResponse));
 
-    doThrow(new RuntimeException("예약 확정 실패")).when(reservationService).confirmReservation(1L, true);
+    doThrow(new RuntimeException("예약 확정 실패")).when(reservationService).confirmReservation(1L);
 
     // when & then
     assertThatThrownBy(() -> kakaoPayProvider.approve(1L, "pg-token"))

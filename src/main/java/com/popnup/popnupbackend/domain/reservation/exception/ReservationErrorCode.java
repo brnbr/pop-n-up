@@ -18,10 +18,9 @@ public enum ReservationErrorCode implements ErrorCode {
 
   CANCEL_NOT_ALLOWED_AFTER_START(HttpStatus.CONFLICT, "이미 시작된 회차의 결제 완료 예약은 취소할 수 없습니다."),
   CHECK_IN_NOT_AVAILABLE_TIME(
-      HttpStatus.CONFLICT, "체크인 가능한 시간이 아닙니다. 예약한 회차의 운영일, 운영 종료 시각 전에만 체크인할 수 있습니다."),
+      HttpStatus.CONFLICT, "체크인 가능한 시간이 아닙니다. 예약한 회차 당일, 회차 시작 20분 후까지만 체크인할 수 있습니다."),
   INVALID_PERSON_COUNT(HttpStatus.BAD_REQUEST, "예약 인원은 1명 이상 10명 이하여야 합니다."),
-
-  PAYMENT_NOT_COMPLETED(HttpStatus.CONFLICT, "결제가 완료되지 않았습니다.");
+  QR_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "QR 코드 생성에 실패 했습니다.");
 
   private final HttpStatus httpStatus;
   private final String message;

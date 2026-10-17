@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.domain.schedule.support;
+package com.popnup.popnupbackend.global.support;
 
 import com.querydsl.jpa.impl.JPAQuery;
 import jakarta.persistence.LockModeType;

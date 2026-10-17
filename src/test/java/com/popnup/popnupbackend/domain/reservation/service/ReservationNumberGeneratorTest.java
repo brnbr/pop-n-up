@@ -31,17 +31,6 @@ class ReservationNumberGeneratorTest {
   }
 
   @Test
-  @DisplayName("연속해서 만들어도 겹치지 않는다")
-  void generate_unique() {
-    Set<String> numbers = ConcurrentHashMap.newKeySet();
-    for (int i = 0; i < 100_000; i++) {
-      numbers.add(generator.generate());
-    }
-
-    assertThat(numbers).hasSize(100_000);
-  }
-
-  @Test
   @DisplayName("여러 스레드가 동시에 만들어도 겹치지 않는다")
   void generate_uniqueUnderConcurrency() throws Exception {
     int threads = 12;

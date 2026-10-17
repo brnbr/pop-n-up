@@ -94,14 +94,17 @@ class ReservationBookingServiceTest {
     }
 
     @Test
-    @DisplayName("실패: 회원이 존재하지 않으면 MEMBER_NOT_FOUND 예외가 발생한다")
-    void book_memberNotFound() {
+    @DisplayName("실패: 정지된 회원이면 MEMBER_NOT_VALIDATE_ACTIVE 예외가 발생하고 정원을 건드리지 않는다")
+    void book_inactiveMember() {
       // given
       Long memberId = 1L;
       ReservationCreateRequest request = new ReservationCreateRequest();
-      // 운영에서는 @NotNull 때문에 personCount 없는 요청이 서비스까지 오지 않으므로 유효한 요청으로 만든다
+      ReflectionTestUtils.setField(request, "scheduleId", 10L);
       ReflectionTestUtils.setField(request, "personCount", 1);
-      given(memberRepository.findById(memberId)).willReturn(Optional.empty());
+
+      Member member = Member.createLocal("suspended@test.com", "pw", "정지회원");
+      member.suspend();
+      given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
 
       // when & then
       assertThatThrownBy(() -> reservationBookingService.book(memberId, request))
@@ -109,8 +112,9 @@ class ReservationBookingServiceTest {
           .satisfies(
               e ->
                   assertThat(((ServiceException) e).getErrorCode())
-                      .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND));
+                      .isEqualTo(MemberErrorCode.MEMBER_NOT_VALIDATE_ACTIVE));
 
+      verify(reservationRepository, never()).hasActiveReservation(anyLong(), anyLong());
       verify(scheduleCapacityCache, never()).tryReserve(anyLong(), anyInt());
     }
 
@@ -274,51 +278,6 @@ class ReservationBookingServiceTest {
       verify(transactionTemplate, never()).execute(any());
       verifyNoInteractions(memberRepository, reservationRepository, scheduleRepository);
       verify(scheduleCapacityCache, never()).tryReserve(anyLong(), anyInt());
-    }
-
-    @Test
-    @DisplayName("마감이 아니면 기존처럼 트랜잭션 안에서 처리를 이어간다")
-    void notSoldOut_proceedsInTransaction() {
-      ReflectionTestUtils.setField(reservationBookingService, "soldOutPrecheck", true);
-      given(scheduleCapacityCache.isSoldOut(1L, 1)).willReturn(false);
-      given(memberRepository.findById(1L)).willReturn(Optional.empty());
-
-      assertThatThrownBy(() -> reservationBookingService.book(1L, request(1)))
-          .isInstanceOf(ServiceException.class)
-          .satisfies(
-              e ->
-                  assertThat(((ServiceException) e).getErrorCode())
-                      .isEqualTo(MemberErrorCode.MEMBER_NOT_FOUND));
-
-      verify(transactionTemplate).execute(any());
-      verify(memberRepository).findById(1L);
-    }
-
-    @Test
-    @DisplayName("선확인을 끄면(토글 false) Redis 선확인을 호출하지 않는다 (개선 전 재현용)")
-    void precheckDisabled_neverCallsRedisPrecheck() {
-      ReflectionTestUtils.setField(reservationBookingService, "soldOutPrecheck", false);
-      given(memberRepository.findById(1L)).willReturn(Optional.empty());
-
-      assertThatThrownBy(() -> reservationBookingService.book(1L, request(1)))
-          .isInstanceOf(ServiceException.class);
-
-      verify(scheduleCapacityCache, never()).isSoldOut(anyLong(), anyInt());
-    }
-
-    @Test
-    @DisplayName("인원 검증이 선확인보다 먼저다: 잘못된 인원은 Redis도 조회하지 않고 거절한다")
-    void invalidPersonCount_rejectedBeforePrecheck() {
-      ReflectionTestUtils.setField(reservationBookingService, "soldOutPrecheck", true);
-
-      assertThatThrownBy(() -> reservationBookingService.book(1L, request(11)))
-          .isInstanceOf(ServiceException.class)
-          .satisfies(
-              e ->
-                  assertThat(((ServiceException) e).getErrorCode())
-                      .isEqualTo(ReservationErrorCode.INVALID_PERSON_COUNT));
-
-      verify(scheduleCapacityCache, never()).isSoldOut(anyLong(), anyInt());
     }
   }
 }

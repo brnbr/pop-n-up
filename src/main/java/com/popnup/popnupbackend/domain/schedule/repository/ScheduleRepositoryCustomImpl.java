@@ -4,7 +4,8 @@ import static com.popnup.popnupbackend.domain.popup.entity.QPopup.popup;
 import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule;
 
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
-import com.popnup.popnupbackend.domain.schedule.support.PessimisticLockSupport;
+import com.popnup.popnupbackend.global.support.PessimisticLockSupport;
+import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -91,5 +92,22 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
             .execute();
 
     return (int) affectedRows;
+  }
+
+  @Override
+  public List<CapacitySnapshot> findCapacitySnapshots(LocalDate from, Long afterId, int limit) {
+    return queryFactory
+        .select(
+            Projections.constructor(
+                CapacitySnapshot.class,
+                schedule.id,
+                schedule.scheduleDate,
+                schedule.maxCapacity,
+                schedule.nowCapacity))
+        .from(schedule)
+        .where(schedule.scheduleDate.goe(from), schedule.id.gt(afterId))
+        .orderBy(schedule.id.asc())
+        .limit(limit)
+        .fetch();
   }
 }

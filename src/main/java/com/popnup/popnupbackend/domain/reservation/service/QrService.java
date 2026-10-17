@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.domain.qrcode.service;
+package com.popnup.popnupbackend.domain.reservation.service;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
@@ -7,7 +7,7 @@ import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
-import com.popnup.popnupbackend.domain.qrcode.exception.QrErrorCode;
+import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -42,7 +42,7 @@ public class QrService {
       return outputStream.toByteArray();
     } catch (WriterException | IOException | IllegalArgumentException exception) {
       log.error("QR Code 생성 실패: text={}", content, exception);
-      throw QrErrorCode.QR_GENERATION_FAILED.toException();
+      throw ReservationErrorCode.QR_GENERATION_FAILED.toException();
     }
   }
 }

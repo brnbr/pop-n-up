@@ -8,7 +8,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.popnup.popnupbackend.domain.qrcode.service.CheckInService;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationBookingService;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleService;
@@ -38,7 +37,6 @@ class AdminAuthorizationTest {
   @MockitoBean private ScheduleService scheduleService;
   @MockitoBean private ReservationBookingService reservationBookingService;
   @MockitoBean private ReservationService reservationService;
-  @MockitoBean private CheckInService checkInService;
 
   private MockMvc mockMvc;
 
@@ -91,7 +89,7 @@ class AdminAuthorizationTest {
         .andExpect(status().isForbidden());
 
     // 거절된 요청은 서비스까지 도달하지 않아야 한다
-    verifyNoInteractions(scheduleService, reservationService, checkInService);
+    verifyNoInteractions(scheduleService, reservationService);
   }
 
   @Test

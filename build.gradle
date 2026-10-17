@@ -5,8 +5,6 @@ plugins {
     id 'com.diffplug.spotless' version '6.23.3' // Spotless 플러그인
 }
 
-ext['testcontainers.version'] = '2.0.5'
-
 group = 'com'
 version = '0.0.1-SNAPSHOT'
 description = 'popnup'
@@ -60,17 +58,10 @@ dependencies {
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.zxing:javase:3.5.3'
 
-    //크롤링
-    implementation 'org.jsoup:jsoup:1.18.1'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-
-    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-    testImplementation 'org.testcontainers:testcontainers-mysql'
 
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-aspectj'
-    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'net.javacrumbs.shedlock:shedlock-spring:5.16.0'
     implementation 'net.javacrumbs.shedlock:shedlock-provider-redis-spring:5.16.0'
 }

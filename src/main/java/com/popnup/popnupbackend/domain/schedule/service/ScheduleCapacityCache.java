@@ -3,8 +3,8 @@ package com.popnup.popnupbackend.domain.schedule.service;
 import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.maxKey;
 import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.usedKey;
 
+import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
-import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -33,29 +33,28 @@ public class ScheduleCapacityCache {
   private final StringRedisTemplate redisTemplate;
   private final ScheduleCapacityCounterStore counterStore;
 
-  public record Init(Long scheduleId, LocalDate scheduleDate, int maxCapacity) {}
-
   private static RedisScript<Long> loadScript(String path) {
     RedisScript<Long> script = RedisScript.of(new ClassPathResource(path), Long.class);
     script.getScriptAsString();
     return script;
   }
 
-  public void initAfterCommit(List<Init> inits) {
-    if (inits.isEmpty()) {
+  public void initAfterCommit(List<Schedule> schedules) {
+    if (schedules.isEmpty()) {
       return;
     }
-    runAfterCommit(() -> initAll(inits));
+    List<Restore> restores =
+        schedules.stream()
+            .map(s -> new Restore(s.getId(), s.getScheduleDate(), s.getMaxCapacity(), 0))
+            .toList();
+    runAfterCommit(() -> initAll(restores));
   }
 
-  private void initAll(List<Init> inits) {
-    List<Restore> restores =
-        inits.stream()
-            .map(init -> new Restore(init.scheduleId(), init.scheduleDate(), init.maxCapacity(), 0))
-            .toList();
+  private void initAll(List<Restore> restores) {
     if (!counterStore.restoreAll(restores)) {
       log.warn(
-          "[ScheduleCapacityCache] Redis 초기화 실패, DB만으로 동작합니다. 재동기화가 채웁니다. count={}", inits.size());
+          "[ScheduleCapacityCache] Redis 초기화 실패, DB만으로 동작합니다. 재동기화가 채웁니다. count={}",
+          restores.size());
     }
   }
 

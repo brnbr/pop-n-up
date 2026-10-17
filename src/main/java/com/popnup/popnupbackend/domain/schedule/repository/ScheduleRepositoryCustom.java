@@ -19,4 +19,9 @@ public interface ScheduleRepositoryCustom {
   Optional<Schedule> findWithPopupById(Long id);
 
   int tryDecreaseCapacity(Long scheduleId, int count);
+
+  List<CapacitySnapshot> findCapacitySnapshots(LocalDate from, Long afterId, int limit);
+
+  record CapacitySnapshot(
+      Long id, LocalDate scheduleDate, Integer maxCapacity, Integer nowCapacity) {}
 }

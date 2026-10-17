@@ -6,6 +6,7 @@ import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCod
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -73,34 +74,50 @@ public class Reservation extends BaseEntity {
         reservationNumber, member, schedule, personCount, ReservationStatus.PENDING);
   }
 
-  public void confirm(boolean paymentSucceeded) {
+  public void confirm() {
     if (!this.status.canConfirm()) {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
-    }
-
-    if (!paymentSucceeded) {
-      throw ReservationErrorCode.PAYMENT_NOT_COMPLETED.toException();
     }
 
     this.status = ReservationStatus.CONFIRMED;
   }
 
-  public void checkIn() {
+  public void validatePayable() {
+    if (!this.status.canConfirm()) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
+  }
+
+  public void checkIn(LocalDateTime currentDateTime) {
     if (this.status == ReservationStatus.USED) {
       throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
     }
     if (!this.status.canCheckIn()) {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
     }
+    if (!this.schedule.isCheckInAvailable(currentDateTime)) {
+      throw ReservationErrorCode.CHECK_IN_NOT_AVAILABLE_TIME.toException();
+    }
 
     this.status = ReservationStatus.USED;
   }
 
-  public boolean isOwnedBy(Long memberId) {
-    if (memberId == null || this.member == null) {
-      return false;
+  public void validateOwnedBy(Long memberId) {
+    if (memberId == null || !memberId.equals(this.member.getId())) {
+      throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
     }
+  }
 
-    return memberId.equals(this.member.getId());
+  public void validateCancelable(LocalDateTime currentDateTime) {
+    if (this.status == ReservationStatus.CONFIRMED
+        && this.schedule.isAlreadyStarted(currentDateTime)) {
+      throw ReservationErrorCode.CANCEL_NOT_ALLOWED_AFTER_START.toException();
+    }
+  }
+
+  public void validateQrIssuable() {
+    if (this.status != ReservationStatus.CONFIRMED) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
   }
 }

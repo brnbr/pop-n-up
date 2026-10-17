@@ -53,7 +53,6 @@ public class ScheduleController {
     return ResponseEntity.ok(ApiResponse.success("스케줄이 삭제되었습니다.", null));
   }
 
-  // 관리자 - 타임 슬롯 일괄 등록
   @Secured("ROLE_ADMIN")
   @PostMapping("/admin/schedules/batch")
   public ResponseEntity<ApiResponse<Integer>> createBatchSchedules(

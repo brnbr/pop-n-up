@@ -4,7 +4,6 @@ import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,15 +29,8 @@ public interface ReservationRepositoryCustom {
 
   record ScheduleAndPersonCount(Long scheduleId, Integer personCount) {}
 
-  List<Reservation> findExpiredReservationsChunk(
-      LocalDate today, LocalTime currentTime, int chunkSize);
+  long expirePastConfirmedReservations(LocalDateTime startedBefore);
 
   List<Reservation> findPendingReservationsChunk(
-      ReservationStatus status, LocalDateTime deadline, int chunkSize);
-
-  List<Reservation> findPendingReservationsChunkForUpdate(
-      ReservationStatus status, LocalDateTime deadline, int chunkSize);
-
-  List<Reservation> findExpiredReservationsChunkForUpdate(
-      LocalDate today, LocalTime currentTime, int chunkSize);
+      ReservationStatus status, LocalDateTime deadline, Long afterId, int chunkSize);
 }

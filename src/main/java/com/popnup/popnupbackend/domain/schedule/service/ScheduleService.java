@@ -1,7 +1,6 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
 import com.popnup.popnupbackend.domain.popup.entity.Popup;
-import com.popnup.popnupbackend.domain.popup.exception.PopupNotFoundException;
 import com.popnup.popnupbackend.domain.popup.repository.PopupRepository;
 import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleBatchCreateRequest;
 import com.popnup.popnupbackend.domain.schedule.dto.request.ScheduleCreateRequest;
@@ -14,21 +13,33 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
-@RequiredArgsConstructor
 public class ScheduleService {
 
   private final ScheduleRepository scheduleRepository;
   private final PopupRepository popupRepository;
   private final ScheduleCapacityCache scheduleCapacityCache;
   private final ScheduleListCache scheduleListCache;
-  private final PlatformTransactionManager transactionManager;
+  private final TransactionTemplate readOnlyTransaction;
+
+  public ScheduleService(
+      ScheduleRepository scheduleRepository,
+      PopupRepository popupRepository,
+      ScheduleCapacityCache scheduleCapacityCache,
+      ScheduleListCache scheduleListCache,
+      PlatformTransactionManager transactionManager) {
+    this.scheduleRepository = scheduleRepository;
+    this.popupRepository = popupRepository;
+    this.scheduleCapacityCache = scheduleCapacityCache;
+    this.scheduleListCache = scheduleListCache;
+    this.readOnlyTransaction = new TransactionTemplate(transactionManager);
+    this.readOnlyTransaction.setReadOnly(true);
+  }
 
   public List<ScheduleResponse> getScheduleByDate(Long popupId, LocalDate date) {
     LocalDateTime now = LocalDateTime.now();
@@ -46,10 +57,9 @@ public class ScheduleService {
   }
 
   private List<ScheduleResponse> loadFromDb(Long popupId, LocalDate date, LocalDateTime now) {
-    TransactionTemplate readOnlyTx = new TransactionTemplate(transactionManager);
-    readOnlyTx.setReadOnly(true);
     List<Schedule> schedules =
-        readOnlyTx.execute(status -> scheduleRepository.findActiveSchedulesByDate(popupId, date));
+        readOnlyTransaction.execute(
+            status -> scheduleRepository.findActiveSchedulesByDate(popupId, date));
     if (scheduleListCache.enabled()) {
       scheduleListCache.put(popupId, date, schedules);
     }
@@ -73,21 +83,11 @@ public class ScheduleService {
             request.getEndTime(),
             request.getMaxCapacity());
 
-    Schedule savedSchedule = scheduleRepository.save(schedule);
-
-    scheduleCapacityCache.initAfterCommit(
-        List.of(
-            new ScheduleCapacityCache.Init(
-                savedSchedule.getId(), savedSchedule.getScheduleDate(), request.getMaxCapacity())));
-    scheduleListCache.evictAfterCommit(popup.getId(), savedSchedule.getScheduleDate());
-
-    return savedSchedule.getId();
+    return saveSchedules(popup, request.getScheduleDate(), List.of(schedule)).get(0).getId();
   }
 
   @Transactional
   public int createBatchSchedules(ScheduleBatchCreateRequest request) {
-    validateBatchTimeRange(request);
-
     Popup popup =
         findCreatablePopup(
             request.getPopupId(),
@@ -104,17 +104,16 @@ public class ScheduleService {
             request.getIntervalMinutes(),
             request.getMaxCapacity());
 
-    List<Schedule> savedSchedules = scheduleRepository.saveAll(schedules);
+    return saveSchedules(popup, request.getScheduleDate(), schedules).size();
+  }
 
-    scheduleCapacityCache.initAfterCommit(
-        savedSchedules.stream()
-            .map(
-                saved ->
-                    new ScheduleCapacityCache.Init(
-                        saved.getId(), saved.getScheduleDate(), request.getMaxCapacity()))
-            .toList());
-    scheduleListCache.evictAfterCommit(popup.getId(), request.getScheduleDate());
-    return schedules.size();
+  // 저장한 회차의 Redis 정원 키를 만들고 그날 일정 목록 캐시를 지운다 (모두 커밋 후)
+  private List<Schedule> saveSchedules(
+      Popup popup, LocalDate scheduleDate, List<Schedule> schedules) {
+    List<Schedule> saved = scheduleRepository.saveAll(schedules);
+    scheduleCapacityCache.initAfterCommit(saved);
+    scheduleListCache.evictAfterCommit(popup.getId(), scheduleDate);
+    return saved;
   }
 
   @Transactional
@@ -148,22 +147,12 @@ public class ScheduleService {
     }
   }
 
-  private void validateBatchTimeRange(ScheduleBatchCreateRequest request) {
-    if (!request.getCloseTime().isAfter(request.getOpenTime())) {
-      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
-    }
-
-    if (request.getIntervalMinutes() == null || request.getIntervalMinutes() <= 0) {
-      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
-    }
-  }
-
   private Popup findCreatablePopup(
       Long popupId, LocalDate scheduleDate, LocalTime startTime, LocalTime endTime) {
     Popup popup =
         popupRepository
             .findById(popupId)
-            .orElseThrow(() -> new PopupNotFoundException("존재하지 않는 팝업입니다."));
+            .orElseThrow(ScheduleErrorCode.POPUP_NOT_FOUND::toException);
 
     validateScheduleWithinPopupPeriod(popup, scheduleDate);
 
@@ -176,7 +165,7 @@ public class ScheduleService {
 
   private void validateScheduleWithinPopupPeriod(Popup popup, LocalDate scheduleDate) {
     if (scheduleDate.isBefore(popup.getStartDate()) || scheduleDate.isAfter(popup.getEndDate())) {
-      throw new IllegalArgumentException("스케줄 날짜는 팝업 운영 기간 내여야 합니다.");
+      throw ScheduleErrorCode.SCHEDULE_OUT_OF_POPUP_PERIOD.toException();
     }
   }
 }

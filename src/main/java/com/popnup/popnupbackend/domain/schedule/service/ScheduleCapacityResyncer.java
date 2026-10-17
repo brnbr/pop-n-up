@@ -1,7 +1,7 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
-import com.popnup.popnupbackend.domain.schedule.repository.ScheduleCapacitySnapshot;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
+import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepositoryCustom.CapacitySnapshot;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Counter;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -15,7 +15,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -93,15 +92,15 @@ public class ScheduleCapacityResyncer {
   private boolean resyncChunks(LocalDate today, Tally tally, Set<Long> seen) {
     Long afterId = 0L;
     while (true) {
-      List<ScheduleCapacitySnapshot> chunk =
-          scheduleRepository.findCapacitySnapshots(today, afterId, PageRequest.of(0, CHUNK_SIZE));
+      List<CapacitySnapshot> chunk =
+          scheduleRepository.findCapacitySnapshots(today, afterId, CHUNK_SIZE);
       if (chunk.isEmpty()) {
         return true;
       }
       afterId = chunk.get(chunk.size() - 1).id();
       tally.scanned += chunk.size();
 
-      List<Long> ids = chunk.stream().map(ScheduleCapacitySnapshot::id).toList();
+      List<Long> ids = chunk.stream().map(CapacitySnapshot::id).toList();
       seen.addAll(ids);
 
       List<Counter> counters = counterStore.readCounters(ids);
@@ -119,7 +118,7 @@ public class ScheduleCapacityResyncer {
     }
   }
 
-  private ChunkPlan planChunk(List<ScheduleCapacitySnapshot> chunk, List<Counter> counters) {
+  private ChunkPlan planChunk(List<CapacitySnapshot> chunk, List<Counter> counters) {
     ChunkPlan plan = new ChunkPlan();
     for (int i = 0; i < chunk.size(); i++) {
       classify(chunk.get(i), counters.get(i), plan);
@@ -127,7 +126,7 @@ public class ScheduleCapacityResyncer {
     return plan;
   }
 
-  private void classify(ScheduleCapacitySnapshot snap, Counter counter, ChunkPlan plan) {
+  private void classify(CapacitySnapshot snap, Counter counter, ChunkPlan plan) {
     Long id = snap.id();
 
     if (counter.max() == null || counter.used() == null) {
@@ -157,7 +156,7 @@ public class ScheduleCapacityResyncer {
     }
   }
 
-  private Restore restoreOf(ScheduleCapacitySnapshot snap) {
+  private Restore restoreOf(CapacitySnapshot snap) {
     return new Restore(snap.id(), snap.scheduleDate(), snap.maxCapacity(), snap.nowCapacity());
   }
 

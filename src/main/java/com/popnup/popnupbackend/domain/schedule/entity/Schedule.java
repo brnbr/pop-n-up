@@ -5,6 +5,7 @@ import com.popnup.popnupbackend.domain.popup.entity.PopupStatus;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -28,6 +29,8 @@ import org.hibernate.annotations.DynamicUpdate;
     })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Schedule extends BaseEntity {
+
+  public static final Duration CHECK_IN_GRACE = Duration.ofMinutes(20);
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -92,9 +95,9 @@ public class Schedule extends BaseEntity {
       LocalDate scheduleDate,
       LocalTime openTime,
       LocalTime closeTime,
-      int intervalMinutes,
+      Integer intervalMinutes,
       Integer maxCapacity) {
-    if (intervalMinutes <= 0) {
+    if (intervalMinutes == null || intervalMinutes <= 0) {
       throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
     }
 
@@ -132,7 +135,7 @@ public class Schedule extends BaseEntity {
       throw ScheduleErrorCode.SCHEDULE_ALREADY_STARTED.toException();
     }
     if (this.popup.getStatus() != PopupStatus.OPEN) {
-      throw ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND.toException();
+      throw ScheduleErrorCode.POPUP_NOT_OPEN.toException();
     }
   }
 
@@ -141,8 +144,9 @@ public class Schedule extends BaseEntity {
   }
 
   public boolean isCheckInAvailable(LocalDateTime currentDateTime) {
-    return this.scheduleDate.equals(currentDateTime.toLocalDate())
-        && !currentDateTime.toLocalTime().isAfter(this.endTime);
+    return !currentDateTime.toLocalDate().isBefore(this.scheduleDate)
+        && !currentDateTime.isAfter(
+            LocalDateTime.of(this.scheduleDate, this.startTime).plus(CHECK_IN_GRACE));
   }
 
   public void updateActiveStatus(boolean isActive) {

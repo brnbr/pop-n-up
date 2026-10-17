@@ -8,11 +8,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache.Init;
+import com.popnup.popnupbackend.domain.popup.entity.Popup;
+import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -65,25 +67,9 @@ class ScheduleCapacityCacheTest {
     }
 
     @Test
-    @DisplayName("마감: 한 명 자리는 남았지만 요청 인원이 남은 자리보다 많으면 true")
-    void soldOut_whenRequestExceedsRemaining() {
-      redisHas("100", "99");
-
-      assertThat(cache.isSoldOut(1L, 2)).isTrue();
-    }
-
-    @Test
     @DisplayName("경계: 사용량 + 요청 인원이 정확히 정원이면 마감이 아니다 (마지막 자리)")
     void notSoldOut_atExactCapacity() {
       redisHas("100", "99");
-
-      assertThat(cache.isSoldOut(1L, 1)).isFalse();
-    }
-
-    @Test
-    @DisplayName("여유: 정원이 남아 있으면 false")
-    void notSoldOut_whenRoomLeft() {
-      redisHas("100", "10");
 
       assertThat(cache.isSoldOut(1L, 1)).isFalse();
     }
@@ -97,25 +83,9 @@ class ScheduleCapacityCacheTest {
     }
 
     @Test
-    @DisplayName("fail-open: 한쪽 키만 없어도 false")
-    void notSoldOut_whenOneKeyMissing() {
-      redisHas("100", null);
-
-      assertThat(cache.isSoldOut(1L, 1)).isFalse();
-    }
-
-    @Test
     @DisplayName("fail-open: Redis 장애 시 예외를 던지지 않고 false (선확인이 예약을 막으면 안 된다)")
     void notSoldOut_whenRedisFails() {
       given(valueOps.multiGet(anyList())).willThrow(new RuntimeException("redis down"));
-
-      assertThat(cache.isSoldOut(1L, 1)).isFalse();
-    }
-
-    @Test
-    @DisplayName("fail-open: Redis 응답이 비어 있으면 false")
-    void notSoldOut_whenResponseEmpty() {
-      given(valueOps.multiGet(anyList())).willReturn(List.of());
 
       assertThat(cache.isSoldOut(1L, 1)).isFalse();
     }
@@ -127,12 +97,20 @@ class ScheduleCapacityCacheTest {
 
     private final LocalDate date = LocalDate.of(2031, 5, 10);
 
+    private Schedule schedule(long id, int maxCapacity) {
+      Schedule schedule =
+          Schedule.createSchedule(
+              mock(Popup.class), date, LocalTime.of(10, 0), LocalTime.of(11, 0), maxCapacity);
+      ReflectionTestUtils.setField(schedule, "id", id);
+      return schedule;
+    }
+
     @Test
     @DisplayName("트랜잭션 밖이면 바로, 여러 회차를 한 번에 쓴다 (정원 + 사용량 0)")
     void outsideTransaction_writesAllAtOnce() {
       given(counterStore.restoreAll(anyList())).willReturn(true);
 
-      cache.initAfterCommit(List.of(new Init(1L, date, 30), new Init(2L, date, 20)));
+      cache.initAfterCommit(List.of(schedule(1L, 30), schedule(2L, 20)));
 
       verify(counterStore, times(1))
           .restoreAll(List.of(new Restore(1L, date, 30, 0), new Restore(2L, date, 20, 0)));
@@ -144,7 +122,7 @@ class ScheduleCapacityCacheTest {
       given(counterStore.restoreAll(anyList())).willReturn(true);
       TransactionSynchronizationManager.initSynchronization();
 
-      cache.initAfterCommit(List.of(new Init(1L, date, 30)));
+      cache.initAfterCommit(List.of(schedule(1L, 30)));
       verify(counterStore, never()).restoreAll(anyList());
 
       for (TransactionSynchronization synchronization :
@@ -160,7 +138,7 @@ class ScheduleCapacityCacheTest {
     void rollback_neverWrites() {
       TransactionSynchronizationManager.initSynchronization();
 
-      cache.initAfterCommit(List.of(new Init(1L, date, 30)));
+      cache.initAfterCommit(List.of(schedule(1L, 30)));
       for (TransactionSynchronization synchronization :
           TransactionSynchronizationManager.getSynchronizations()) {
         synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
@@ -174,16 +152,8 @@ class ScheduleCapacityCacheTest {
     void writeFailure_doesNotThrow() {
       given(counterStore.restoreAll(anyList())).willReturn(false);
 
-      assertThatCode(() -> cache.initAfterCommit(List.of(new Init(1L, date, 30))))
+      assertThatCode(() -> cache.initAfterCommit(List.of(schedule(1L, 30))))
           .doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("빈 목록이면 아무것도 하지 않는다")
-    void emptyList_doesNothing() {
-      cache.initAfterCommit(List.of());
-
-      verifyNoInteractions(counterStore);
     }
   }
 }

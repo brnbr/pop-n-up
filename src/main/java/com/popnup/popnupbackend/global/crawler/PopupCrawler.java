@@ -1,23 +1,32 @@
 package com.popnup.popnupbackend.global.crawler;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PopupCrawler {
 
-  private final ObjectMapper objectMapper;
+  private final JsonMapper jsonMapper;
   private final RestClient restClient;
+
+  @Autowired
+  public PopupCrawler(JsonMapper jsonMapper) {
+    this(jsonMapper, RestClient.create());
+  }
+
+  PopupCrawler(JsonMapper jsonMapper, RestClient restClient) {
+    this.jsonMapper = jsonMapper;
+    this.restClient = restClient;
+  }
 
   public List<CrawledPopupDto> crawlPopups() {
     List<CrawledPopupDto> popups = new ArrayList<>();
@@ -37,7 +46,7 @@ public class PopupCrawler {
               .retrieve()
               .body(String.class);
 
-      JsonNode rootNode = objectMapper.readTree(response);
+      JsonNode rootNode = jsonMapper.readTree(response);
       JsonNode dataList = rootNode.path("data");
 
       if (dataList.isArray()) {

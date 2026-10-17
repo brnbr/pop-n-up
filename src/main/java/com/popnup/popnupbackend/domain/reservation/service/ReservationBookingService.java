@@ -12,7 +12,6 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
-import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,7 +35,6 @@ public class ReservationBookingService {
   @Value("${reservation.booking.sold-out-precheck:true}")
   private boolean soldOutPrecheck;
 
-  @RateLimiter(name = "reservationBooking")
   public ReservationCreateResponse book(Long memberId, ReservationCreateRequest request) {
     if (request.getPersonCount() == null
         || request.getPersonCount() < 1
@@ -69,9 +67,12 @@ public class ReservationBookingService {
   }
 
   private Member findMember(Long memberId) {
-    return memberRepository
-        .findById(memberId)
-        .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
+    Member member =
+        memberRepository
+            .findById(memberId)
+            .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
+    member.validateActive();
+    return member;
   }
 
   private void validateNoActiveReservation(Long scheduleId, Long memberId) {

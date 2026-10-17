@@ -8,14 +8,15 @@ import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
 import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ReservationCancelManager {
 
   private static final List<ReservationStatus> RESTORABLE_STATUSES =
@@ -24,7 +25,20 @@ public class ReservationCancelManager {
   private final ScheduleRepository scheduleRepository;
   private final ReservationRepository reservationRepository;
   private final ScheduleCapacityCache scheduleCapacityCache;
-  private final ReservationStatusReader reservationStatusReader;
+  private final TransactionTemplate freshReadTransaction;
+
+  public ReservationCancelManager(
+      ScheduleRepository scheduleRepository,
+      ReservationRepository reservationRepository,
+      ScheduleCapacityCache scheduleCapacityCache,
+      PlatformTransactionManager transactionManager) {
+    this.scheduleRepository = scheduleRepository;
+    this.reservationRepository = reservationRepository;
+    this.scheduleCapacityCache = scheduleCapacityCache;
+    this.freshReadTransaction = new TransactionTemplate(transactionManager);
+    this.freshReadTransaction.setPropagationBehavior(
+        TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+  }
 
   @Transactional
   public boolean cancel(Long reservationId) {
@@ -36,12 +50,6 @@ public class ReservationCancelManager {
   public boolean expirePaymentTimeout(Long reservationId) {
     return processTerminalStatusChange(
         reservationId, ReservationStatus.EXPIRED, List.of(ReservationStatus.PENDING));
-  }
-
-  @Transactional
-  public boolean expireNoShow(Long reservationId) {
-    return processTerminalStatusChange(
-        reservationId, ReservationStatus.EXPIRED, List.of(ReservationStatus.CONFIRMED));
   }
 
   private boolean processTerminalStatusChange(
@@ -63,7 +71,7 @@ public class ReservationCancelManager {
 
     if (restoredRows == 0) {
       log.error(
-          "[processTerminalStatusChange] 좌석 복구 실패 - 정합성 이상 가능성. "
+          "[processTerminalStatusChange] 좌석 복구 실패 "
               + "reservationId={}, scheduleId={}, personCount={}, newStatus={}",
           reservationId,
           target.scheduleId(),
@@ -79,8 +87,8 @@ public class ReservationCancelManager {
   private boolean handleFailedTransition(Long reservationId) {
 
     ReservationStatus current =
-        reservationStatusReader
-            .getFreshStatus(reservationId)
+        freshReadTransaction
+            .execute(status -> reservationRepository.findStatusById(reservationId))
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
     if (current.isEnded()) {
