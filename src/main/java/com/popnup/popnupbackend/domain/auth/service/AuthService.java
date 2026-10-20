@@ -38,9 +38,9 @@ public class AuthService {
 
   public String signin(@Valid SigninRequest request) {
     Member member =
-        memberRepository
-            .findByEmail(request.getEmail())
-            .orElseThrow(MemberErrorCode.EMAIL_NOT_FOUND::toException);
+            memberRepository
+                    .findByEmail(request.getEmail())
+                    .orElseThrow(MemberErrorCode.INVALID_CREDENTIALS::toException);
 
     member.validateActive();
 
@@ -50,7 +50,7 @@ public class AuthService {
     boolean matches = passwordEncoder.matches(rawPassword, encodedPassword);
 
     if (!matches) {
-      throw MemberErrorCode.PASSWORD_NOT_MATCH.toException();
+      throw MemberErrorCode.INVALID_CREDENTIALS.toException();
     }
 
     return jwtUtil.createToken(
