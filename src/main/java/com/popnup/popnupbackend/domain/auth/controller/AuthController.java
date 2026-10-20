@@ -4,6 +4,7 @@ import com.popnup.popnupbackend.domain.auth.dto.request.SigninRequest;
 import com.popnup.popnupbackend.domain.auth.dto.request.SignupRequest;
 import com.popnup.popnupbackend.domain.auth.service.AuthService;
 import com.popnup.popnupbackend.global.common.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -25,8 +26,9 @@ public class AuthController {
   }
 
   @PostMapping("/auth/signin")
-  public ResponseEntity<ApiResponse<Void>> signin(@Valid @RequestBody SigninRequest request) {
-    String jwt = authService.signin(request);
+  public ResponseEntity<ApiResponse<Void>> signin(@Valid @RequestBody SigninRequest request, HttpServletRequest httprequest) {
+    String clientIp = httprequest.getRemoteAddr();
+    String jwt = authService.signin(request, clientIp);
     return ResponseEntity.ok().header("Authorization", "Bearer " + jwt).body(ApiResponse.success());
   }
 
