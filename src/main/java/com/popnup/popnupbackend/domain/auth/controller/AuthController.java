@@ -26,7 +26,8 @@ public class AuthController {
   }
 
   @PostMapping("/auth/signin")
-  public ResponseEntity<ApiResponse<Void>> signin(@Valid @RequestBody SigninRequest request, HttpServletRequest httprequest) {
+  public ResponseEntity<ApiResponse<Void>> signin(
+      @Valid @RequestBody SigninRequest request, HttpServletRequest httprequest) {
     String clientIp = httprequest.getRemoteAddr();
     String jwt = authService.signin(request, clientIp);
     return ResponseEntity.ok().header("Authorization", "Bearer " + jwt).body(ApiResponse.success());

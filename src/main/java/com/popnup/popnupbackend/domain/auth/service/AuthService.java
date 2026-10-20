@@ -8,7 +8,6 @@ import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
 import com.popnup.popnupbackend.global.security.JwtBlacklistService;
 import com.popnup.popnupbackend.global.security.JwtUtil;
 import com.popnup.popnupbackend.global.security.LoginAttemptService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -65,10 +64,7 @@ public class AuthService {
     loginAttemptService.clear(email, clientIp);
 
     return jwtUtil.createToken(
-            member.getId(),
-            member.getEmail(),
-            member.getName(),
-            member.getRole());
+        member.getId(), member.getEmail(), member.getName(), member.getRole());
   }
 
   public void logout(String token) {
