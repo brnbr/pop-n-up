@@ -7,7 +7,7 @@ import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
 import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
 import com.popnup.popnupbackend.global.security.JwtBlacklistService;
 import com.popnup.popnupbackend.global.security.JwtUtil;
-import jakarta.validation.Valid;
+import com.popnup.popnupbackend.global.security.LoginAttemptService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,6 +21,7 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtUtil jwtUtil;
   private final JwtBlacklistService jwtBlacklistService;
+  private final LoginAttemptService loginAttemptService;
 
   @Transactional
   public void signup(SignupRequest request) {
@@ -36,22 +37,31 @@ public class AuthService {
     memberRepository.save(member);
   }
 
-  public String signin(@Valid SigninRequest request) {
-    Member member =
-        memberRepository
-            .findByEmail(request.getEmail())
-            .orElseThrow(MemberErrorCode.EMAIL_NOT_FOUND::toException);
+  public String signin(SigninRequest request, String clientIp) {
+
+    String email = request.getEmail();
+
+    if (loginAttemptService.isBlocked(email, clientIp)) {
+      throw MemberErrorCode.INVALID_CREDENTIALS.toException();
+    }
+
+    Member member = memberRepository.findByEmail(email).orElse(null);
+
+    if (member == null) {
+      loginAttemptService.recordFailure(email, clientIp);
+      throw MemberErrorCode.INVALID_CREDENTIALS.toException();
+    }
 
     member.validateActive();
 
-    String rawPassword = request.getPassword();
-    String encodedPassword = member.getPassword();
-
-    boolean matches = passwordEncoder.matches(rawPassword, encodedPassword);
+    boolean matches = passwordEncoder.matches(request.getPassword(), member.getPassword());
 
     if (!matches) {
-      throw MemberErrorCode.PASSWORD_NOT_MATCH.toException();
+      loginAttemptService.recordFailure(email, clientIp);
+      throw MemberErrorCode.INVALID_CREDENTIALS.toException();
     }
+
+    loginAttemptService.clear(email, clientIp);
 
     return jwtUtil.createToken(
         member.getId(), member.getEmail(), member.getName(), member.getRole());
