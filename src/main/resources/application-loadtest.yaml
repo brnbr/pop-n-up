@@ -1,0 +1,24 @@
+spring:
+  cloud:
+    aws:
+      parameterstore:
+        enabled: false
+
+
+reservation:
+  timeout:
+    payment-timeout-seconds: 20
+  scheduler:
+    payment-timeout-cron: "*/5 * * * * *"
+    payment-timeout-lock-at-least-for: "2s"
+    payment-timeout-lock-at-most-for: "15s"
+
+logging:
+  level:
+    com.popnup.popnupbackend.domain.reservation: DEBUG
+
+schedule:
+  capacity-resync:
+    cron: "*/10 * * * * *"
+    lock-at-least-for: "2s"
+    enabled: ${CAPACITY_RESYNC_ENABLED:true}
