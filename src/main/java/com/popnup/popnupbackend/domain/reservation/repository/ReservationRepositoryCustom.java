@@ -5,17 +5,27 @@ import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface ReservationRepositoryCustom {
 
-  List<Reservation> getAllReservation(Long memberId, int page, int size);
+  List<Reservation> findMemberReservations(Long memberId, int page, int size);
+
+  List<Reservation> findMemberReservationsAfter(Long memberId, MemberCursor after, int limit);
 
   boolean hasActiveReservation(Long scheduleId, Long memberId);
 
   List<Reservation> findAdminReservations(
       Long popupId, LocalDate scheduleDate, ReservationStatus status, int page, int size);
+
+  List<Reservation> findAdminReservationsAfter(
+      Long popupId, LocalDate scheduleDate, ReservationStatus status, AdminCursor after, int limit);
+
+  record AdminCursor(LocalDate scheduleDate, LocalTime startTime, Long id) {}
+
+  record MemberCursor(LocalDateTime createdAt, Long id) {}
 
   Optional<Reservation> findByReservationNumberWithPessimisticLock(String reservationNumber);
 
@@ -24,21 +34,10 @@ public interface ReservationRepositoryCustom {
   int tryUpdateStatus(
       Long reservationId, ReservationStatus newStatus, List<ReservationStatus> fromStatuses);
 
-  Optional<ScheduleAndPersonCount> findScheduleAndPersonCount(Long reservationId);
+  long expirePastConfirmedReservations(LocalDateTime startedBefore);
 
-  Optional<ReservationStatus> findStatusById(Long reservationId);
+  List<Reservation> claimExpiredPendingChunk(
+      LocalDateTime deadline, Collection<Long> excludedIds, int chunkSize);
 
-  record ScheduleAndPersonCount(Long scheduleId, Integer personCount) {}
-
-  List<Reservation> findExpiredReservationsChunk(
-      LocalDate today, LocalTime currentTime, int chunkSize);
-
-  List<Reservation> findPendingReservationsChunk(
-      ReservationStatus status, LocalDateTime deadline, int chunkSize);
-
-  List<Reservation> findPendingReservationsChunkForUpdate(
-      ReservationStatus status, LocalDateTime deadline, int chunkSize);
-
-  List<Reservation> findExpiredReservationsChunkForUpdate(
-      LocalDate today, LocalTime currentTime, int chunkSize);
+  long expirePendingByIds(Collection<Long> reservationIds);
 }

@@ -4,6 +4,7 @@ import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface ScheduleRepositoryCustom {
@@ -16,7 +17,14 @@ public interface ScheduleRepositoryCustom {
 
   int tryIncreaseCapacity(Long scheduleId, int count);
 
-  Optional<Schedule> findByIdForValidation(Long id);
+  Optional<Schedule> findWithPopupById(Long id);
 
   int tryDecreaseCapacity(Long scheduleId, int count);
+
+  int tryDecreaseCapacities(Map<Long, Integer> countsBySchedule);
+
+  List<CapacitySnapshot> findCapacitySnapshots(LocalDate from, Long afterId, int limit);
+
+  record CapacitySnapshot(
+      Long id, LocalDate scheduleDate, Integer maxCapacity, Integer nowCapacity) {}
 }

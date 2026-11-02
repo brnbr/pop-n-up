@@ -173,7 +173,7 @@ public class KakaoPayProvider {
 
     try {
 
-      reservationService.confirmReservation(reservation.getId(), true);
+      reservationService.confirmReservation(reservation.getId());
 
     } catch (Exception e) {
       paymentCompensationService.compensate(paymentId);

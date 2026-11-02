@@ -1,14 +1,15 @@
 package com.popnup.popnupbackend.domain.reservation.controller;
 
 import com.popnup.popnupbackend.domain.auth.dto.request.AuthUser;
-import com.popnup.popnupbackend.domain.qrcode.dto.request.CheckInRequest;
-import com.popnup.popnupbackend.domain.qrcode.dto.response.CheckInResponse;
-import com.popnup.popnupbackend.domain.qrcode.service.CheckInService;
+import com.popnup.popnupbackend.domain.reservation.dto.request.CheckInRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
+import com.popnup.popnupbackend.domain.reservation.dto.response.CheckInResponse;
+import com.popnup.popnupbackend.domain.reservation.dto.response.CursorPage;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
+import com.popnup.popnupbackend.domain.reservation.service.ReservationBookingService;
 import com.popnup.popnupbackend.domain.reservation.service.ReservationService;
 import com.popnup.popnupbackend.global.common.ApiResponse;
 import jakarta.validation.Valid;
@@ -27,16 +28,15 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ReservationController {
 
+  private final ReservationBookingService reservationBookingService;
   private final ReservationService reservationService;
-  private final CheckInService checkInService;
 
   @PostMapping("/reservations")
   public ResponseEntity<ApiResponse<ReservationCreateResponse>> createReservation(
       @AuthenticationPrincipal AuthUser authUser,
       @Valid @RequestBody ReservationCreateRequest request) {
     return ResponseEntity.ok(
-        ApiResponse.success(
-            reservationService.bookWithConditionalUpdate(authUser.getId(), request)));
+        ApiResponse.success(reservationBookingService.book(authUser.getId(), request)));
   }
 
   @GetMapping(value = "/reservations/{reservationId}/qr", produces = MediaType.IMAGE_PNG_VALUE)
@@ -53,7 +53,7 @@ public class ReservationController {
   @PostMapping("/admin/reservations/check-in")
   public ResponseEntity<ApiResponse<CheckInResponse>> checkIn(
       @Valid @RequestBody CheckInRequest request) {
-    return ResponseEntity.ok(ApiResponse.success(checkInService.checkIn(request)));
+    return ResponseEntity.ok(ApiResponse.success(reservationService.checkIn(request)));
   }
 
   @DeleteMapping("/reservations/{reservationId}")
@@ -69,14 +69,41 @@ public class ReservationController {
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size) {
     return ResponseEntity.ok(
-        ApiResponse.success(reservationService.allReservations(authUser.getId(), page, size)));
+        ApiResponse.success(
+            reservationService.getMemberReservations(authUser.getId(), page, size)));
+  }
+
+  @GetMapping(value = "/reservations", params = "cursor")
+  public ResponseEntity<ApiResponse<CursorPage<ReservationResponse>>> getAllByCursor(
+      @AuthenticationPrincipal AuthUser authUser,
+      @RequestParam String cursor,
+      @RequestParam(defaultValue = "20") int size) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            reservationService.getMemberReservationsByCursor(authUser.getId(), cursor, size)));
   }
 
   @GetMapping("/reservations/{reservationId}")
   public ResponseEntity<ApiResponse<ReservationResponse>> getOne(
       @AuthenticationPrincipal AuthUser authUser, @PathVariable Long reservationId) {
     return ResponseEntity.ok(
-        ApiResponse.success(reservationService.oneReservation(authUser.getId(), reservationId)));
+        ApiResponse.success(
+            reservationService.getMemberReservation(authUser.getId(), reservationId)));
+  }
+
+  @Secured("ROLE_ADMIN")
+  @GetMapping(value = "/admin/reservations", params = "cursor")
+  public ResponseEntity<ApiResponse<CursorPage<AdminReservationResponse>>> getAllAdminByCursor(
+      @RequestParam Long popupId,
+      @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+          LocalDate scheduleDate,
+      @RequestParam(required = false) ReservationStatus status,
+      @RequestParam String cursor,
+      @RequestParam(defaultValue = "20") int size) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            reservationService.getAdminReservationsByCursor(
+                popupId, scheduleDate, status, cursor, size)));
   }
 
   @Secured("ROLE_ADMIN")

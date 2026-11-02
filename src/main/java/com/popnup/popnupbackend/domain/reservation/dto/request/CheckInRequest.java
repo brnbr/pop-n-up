@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.domain.qrcode.dto.request;
+package com.popnup.popnupbackend.domain.reservation.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;

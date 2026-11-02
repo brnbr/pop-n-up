@@ -1,249 +1,283 @@
 package com.popnup.popnupbackend.domain.reservation.service;
 
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
-import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
+import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ReservationTimeoutProcessor {
+
+  public enum ExpiryMode {
+    CHUNK,
+    PER_ITEM
+  }
+
+  public record ExpiryResult(
+      ExpiryMode mode,
+      int chunkSize,
+      int workers,
+      int processed,
+      int skipped,
+      int failed,
+      long elapsedMs,
+      double maxTxMs) {}
+
+  private static final String PAYMENT_TIMEOUT_LABEL = "결제 미완료 만료";
+  private static final String NO_SHOW_LABEL = "지난 회차 미방문 만료";
+  private static final String TX_TIMER = "reservation.expire.tx";
 
   private final ReservationRepository reservationRepository;
   private final ReservationCancelManager reservationCancelManager;
-  private final ReservationChunkClaimer reservationChunkClaimer;
   private final MeterRegistry meterRegistry;
+  private final TransactionTemplate chunkTransaction;
 
   @Value("${reservation.timeout.chunk-size:100}")
   private int chunkSize;
 
-  @Value("${reservation.timeout.worker-count:1}")
-  private int workerCount;
+  @Value("${reservation.timeout.workers:1}")
+  private int workers;
+
+  @Value("${reservation.timeout.expiry-mode:CHUNK}")
+  private ExpiryMode expiryMode;
 
   @Value("${reservation.timeout.payment-timeout-seconds:600}")
   private long paymentTimeoutSeconds;
 
-  public void payTimeOut() {
-    LocalDateTime deadLine = LocalDateTime.now().minusSeconds(paymentTimeoutSeconds);
-    if (workerCount <= 1) {
-      processInChunks(
-          "결제 미완료 만료",
-          () ->
-              reservationRepository.findPendingReservationsChunk(
-                  ReservationStatus.PENDING, deadLine, chunkSize),
-          reservationId -> reservationCancelManager.expirePaymentTimeout(reservationId));
+  public ReservationTimeoutProcessor(
+      ReservationRepository reservationRepository,
+      ReservationCancelManager reservationCancelManager,
+      MeterRegistry meterRegistry,
+      PlatformTransactionManager transactionManager) {
+    this.reservationRepository = reservationRepository;
+    this.reservationCancelManager = reservationCancelManager;
+    this.meterRegistry = meterRegistry;
+    this.chunkTransaction = new TransactionTemplate(transactionManager);
+    this.chunkTransaction.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+  }
+
+  public ExpiryResult expireUnpaidReservations() {
+    return expireUnpaidReservations(expiryMode, chunkSize, workers);
+  }
+
+  public ExpiryResult expireUnpaidReservations(ExpiryMode mode, int size, int workerCount) {
+    ExpiryRun run =
+        new ExpiryRun(
+            LocalDateTime.now().minusSeconds(paymentTimeoutSeconds),
+            mode == null ? ExpiryMode.CHUNK : mode,
+            Math.max(1, size));
+    int threads = Math.max(1, workerCount);
+    long started = System.nanoTime();
+
+    log.debug(
+        "[{}] 처리 시작 (방식: {}, 청크: {}, 워커: {})",
+        PAYMENT_TIMEOUT_LABEL,
+        run.mode,
+        run.chunkSize,
+        threads);
+
+    if (threads == 1) {
+      drain(run);
     } else {
-      processInChunksMultiWorker(
-          "결제 미완료 만료",
-          () ->
-              reservationRepository.findPendingReservationsChunkForUpdate(
-                  ReservationStatus.PENDING, deadLine, chunkSize),
-          reservationId -> reservationCancelManager.expirePaymentTimeout(reservationId));
+      drainWithWorkers(run, threads);
     }
-  }
 
-  public void expirePastReservations() {
-    LocalDate today = LocalDate.now();
-    LocalTime nowTime = LocalTime.now();
-    if (workerCount <= 1) {
-      processInChunks(
-          "지난 회차 미방문 만료",
-          () -> reservationRepository.findExpiredReservationsChunk(today, nowTime, chunkSize),
-          reservationId -> reservationCancelManager.expireNoShow(reservationId));
-    } else {
-      processInChunksMultiWorker(
-          "지난 회차 미방문 만료",
-          () ->
-              reservationRepository.findExpiredReservationsChunkForUpdate(
-                  today, nowTime, chunkSize),
-          reservationId -> reservationCancelManager.expireNoShow(reservationId));
-    }
-  }
-
-  private void processInChunks(
-      String label,
-      Supplier<List<Reservation>> chunkSupplier,
-      Function<Long, Boolean> expireAction) {
-    int totalProcessed = 0;
-    int totalSkipped = 0;
-    int totalFailed = 0;
-    int chunkNumber = 0;
-    log.info("[{}] 청크 기반 처리 시작 (Chunk Size: {})", label, chunkSize);
-
-    while (true) {
-      long chunkStart = System.currentTimeMillis();
-      List<Reservation> chunk = chunkSupplier.get();
-
-      if (chunk.isEmpty()) {
-        break;
-      }
-
-      chunkNumber++;
-      for (Reservation target : chunk) {
-        try {
-          boolean changed = expireSingleReservation(target.getId(), expireAction);
-          if (changed) {
-            totalProcessed++;
-          } else {
-            totalSkipped++;
-          }
-        } catch (Exception e) {
-          totalFailed++;
-          meterRegistry.counter("reservation.expire.failure", "label", label).increment();
-          log.error(
-              "[{}] 예약 단건 처리 실패 - 다음 사이클에 재조회되어 재시도됩니다. reservationId={}",
-              label,
-              target.getId(),
-              e);
-        }
-      }
-      long chunkElapsedMs = System.currentTimeMillis() - chunkStart;
+    ExpiryResult result =
+        new ExpiryResult(
+            run.mode,
+            run.chunkSize,
+            threads,
+            run.processed.get(),
+            run.skipped.get(),
+            run.failed.get(),
+            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started),
+            run.maxTxNanos.get() / 1_000_000.0);
+    if (run.total() > 0) {
       log.info(
-          "[{}] 청크 #{} 처리 완료 - {}건, {}ms (건당 평균 {}ms)",
-          label,
-          chunkNumber,
-          chunk.size(),
-          chunkElapsedMs,
-          String.format("%.2f", (double) chunkElapsedMs / chunk.size()));
-
-      if (chunk.size() < chunkSize) {
-        break;
-      }
+          "[{}] 처리 완료 (성공 {}건, no-op {}건, 실패 {}건, {}ms, 최대 트랜잭션 {}ms)",
+          PAYMENT_TIMEOUT_LABEL,
+          result.processed(),
+          result.skipped(),
+          result.failed(),
+          result.elapsedMs(),
+          String.format("%.1f", result.maxTxMs()));
     }
-
-    if (totalProcessed > 0 || totalSkipped > 0 || totalFailed > 0) {
-      log.info(
-          "[{}] 처리 완료 (성공 {}건, no-op {}건, 실패 {}건)",
-          label,
-          totalProcessed,
-          totalSkipped,
-          totalFailed);
-    }
+    return result;
   }
 
-  private void processInChunksMultiWorker(
-      String label,
-      Supplier<List<Reservation>> lockedChunkSupplier,
-      Function<Long, Boolean> expireAction) {
-
-    AtomicInteger totalProcessed = new AtomicInteger();
-    AtomicInteger totalSkipped = new AtomicInteger();
-    AtomicInteger totalFailed = new AtomicInteger();
-    log.info("[{}] Multi Worker 처리 시작 (Worker: {}, Chunk Size: {})", label, workerCount, chunkSize);
-
-    ExecutorService executor =
-        Executors.newFixedThreadPool(
-            workerCount,
-            runnable -> {
-              Thread thread = new Thread(runnable);
-              thread.setName("expiry-worker-" + thread.getId());
-              return thread;
-            });
-
-    List<Future<?>> futures = new ArrayList<>();
-    for (int i = 0; i < workerCount; i++) {
-      futures.add(
-          executor.submit(
-              () ->
-                  workerLoop(
-                      label,
-                      lockedChunkSupplier,
-                      expireAction,
-                      totalProcessed,
-                      totalSkipped,
-                      totalFailed)));
-    }
-
-    for (Future<?> future : futures) {
-      try {
+  private void drainWithWorkers(ExpiryRun run, int workerCount) {
+    ExecutorService pool = Executors.newFixedThreadPool(workerCount);
+    try {
+      List<Future<?>> futures = new ArrayList<>();
+      for (int i = 0; i < workerCount; i++) {
+        futures.add(pool.submit(() -> drain(run)));
+      }
+      for (Future<?> future : futures) {
         future.get();
-      } catch (Exception e) {
-        log.error("[{}] Worker 실행 중 예외 발생", label, e);
       }
-    }
-    executor.shutdown();
-
-    if (totalProcessed.get() > 0 || totalSkipped.get() > 0 || totalFailed.get() > 0) {
-      log.info(
-          "[{}] Multi Worker 처리 완료 (성공 {}건, no-op {}건, 실패 {}건)",
-          label,
-          totalProcessed.get(),
-          totalSkipped.get(),
-          totalFailed.get());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException e) {
+      log.error("[{}] 워커 실행 실패", PAYMENT_TIMEOUT_LABEL, e.getCause());
+    } finally {
+      pool.shutdown();
     }
   }
 
-  private void workerLoop(
-      String label,
-      Supplier<List<Reservation>> lockedChunkSupplier,
-      Function<Long, Boolean> expireAction,
-      AtomicInteger totalProcessed,
-      AtomicInteger totalSkipped,
-      AtomicInteger totalFailed) {
+  private void drain(ExpiryRun run) {
+    int claimed;
+    do {
+      claimed = run.mode == ExpiryMode.PER_ITEM ? expireItemByItem(run) : expireChunk(run);
+    } while (claimed == run.chunkSize);
+  }
 
-    String workerName = Thread.currentThread().getName();
+  private int expireChunk(ExpiryRun run) {
+    long chunkStart = System.currentTimeMillis();
+    List<Long> claimedIds = new ArrayList<>();
+    try {
+      timed(
+          run,
+          "chunk",
+          () -> {
+            chunkTransaction.executeWithoutResult(
+                status -> {
+                  List<Reservation> targets = claim(run);
+                  targets.forEach(target -> claimedIds.add(target.getId()));
+                  if (!targets.isEmpty()) {
+                    reservationCancelManager.expirePaymentTimeoutChunk(targets);
+                  }
+                });
+            return null;
+          });
+      run.processed.addAndGet(claimedIds.size());
+    } catch (Exception e) {
+      meterRegistry
+          .counter("reservation.expire.chunk.fallback", "label", PAYMENT_TIMEOUT_LABEL)
+          .increment();
+      log.warn(
+          "[{}] 청크 처리 실패 - 이 청크만 건별로 다시 처리합니다. 건수={}", PAYMENT_TIMEOUT_LABEL, claimedIds.size(), e);
+      expireEach(run, claimedIds);
+    }
+    logChunk(claimedIds.size(), chunkStart);
+    return claimedIds.size();
+  }
 
-    while (true) {
-      long chunkStart = System.currentTimeMillis();
-      List<Reservation> chunk = reservationChunkClaimer.claim(lockedChunkSupplier);
+  private int expireItemByItem(ExpiryRun run) {
+    long chunkStart = System.currentTimeMillis();
+    List<Long> claimedIds =
+        timed(
+            run,
+            "claim",
+            () ->
+                chunkTransaction.execute(
+                    status -> claim(run).stream().map(Reservation::getId).toList()));
+    expireEach(run, claimedIds);
+    logChunk(claimedIds.size(), chunkStart);
+    return claimedIds.size();
+  }
 
-      if (chunk.isEmpty()) {
-        break;
-      }
+  private List<Reservation> claim(ExpiryRun run) {
+    return reservationRepository.claimExpiredPendingChunk(
+        run.deadline, List.copyOf(run.givenUp), run.chunkSize);
+  }
 
-      int chunkSuccess = 0;
-      int chunkSkipped = 0;
-      int chunkFail = 0;
-      for (Reservation target : chunk) {
-        try {
-          boolean changed = expireSingleReservation(target.getId(), expireAction);
-          if (changed) {
-            chunkSuccess++;
-            totalProcessed.incrementAndGet();
-          } else {
-            chunkSkipped++;
-            totalSkipped.incrementAndGet();
-          }
-        } catch (Exception e) {
-          chunkFail++;
-          totalFailed.incrementAndGet();
-          meterRegistry.counter("reservation.expire.failure", "label", label).increment();
-          log.error("[{}][{}] 예약 단건 처리 실패. reservationId={}", label, workerName, target.getId(), e);
+  private void expireEach(ExpiryRun run, List<Long> reservationIds) {
+    for (Long reservationId : reservationIds) {
+      try {
+        if (timed(
+            run, "item", () -> reservationCancelManager.expirePaymentTimeout(reservationId))) {
+          run.processed.incrementAndGet();
+        } else {
+          run.skipped.incrementAndGet();
         }
+      } catch (Exception e) {
+        run.failed.incrementAndGet();
+        run.givenUp.add(reservationId);
+        meterRegistry
+            .counter("reservation.expire.failure", "label", PAYMENT_TIMEOUT_LABEL)
+            .increment();
+        log.error(
+            "[{}] 예약 단건 처리 실패 - 다음 사이클에 재조회되어 재시도됩니다. reservationId={}",
+            PAYMENT_TIMEOUT_LABEL,
+            reservationId,
+            e);
       }
-      long chunkElapsedMs = System.currentTimeMillis() - chunkStart;
-      log.info(
-          "[{}][{}] 청크 처리 완료 - {}건(성공 {}, no-op {}, 실패 {}), {}ms",
-          label,
-          workerName,
-          chunk.size(),
-          chunkSuccess,
-          chunkSkipped,
-          chunkFail,
-          chunkElapsedMs);
     }
   }
 
-  @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public boolean expireSingleReservation(Long reservationId, Function<Long, Boolean> expireAction) {
-    return expireAction.apply(reservationId);
+  private <T> T timed(ExpiryRun run, String kind, Supplier<T> transaction) {
+    long started = System.nanoTime();
+    try {
+      return transaction.get();
+    } finally {
+      long elapsed = System.nanoTime() - started;
+      meterRegistry.timer(TX_TIMER, "kind", kind).record(elapsed, TimeUnit.NANOSECONDS);
+      run.maxTxNanos.accumulateAndGet(elapsed, Math::max);
+    }
+  }
+
+  private void logChunk(int size, long chunkStart) {
+    if (size == 0) {
+      return;
+    }
+    long elapsedMs = System.currentTimeMillis() - chunkStart;
+    log.debug(
+        "[{}] 청크 처리 완료 - {}건, {}ms (건당 평균 {}ms)",
+        PAYMENT_TIMEOUT_LABEL,
+        size,
+        elapsedMs,
+        String.format("%.2f", (double) elapsedMs / size));
+  }
+
+  @Transactional
+  public void expirePastReservations() {
+    LocalDateTime startedBefore = LocalDateTime.now().minus(Schedule.CHECK_IN_GRACE);
+    long expired = reservationRepository.expirePastConfirmedReservations(startedBefore);
+    if (expired > 0) {
+      log.info("[{}] 처리 완료 ({}건)", NO_SHOW_LABEL, expired);
+    }
+  }
+
+  private static final class ExpiryRun {
+
+    private final LocalDateTime deadline;
+    private final ExpiryMode mode;
+    private final int chunkSize;
+    private final Set<Long> givenUp = ConcurrentHashMap.newKeySet();
+    private final AtomicInteger processed = new AtomicInteger();
+    private final AtomicInteger skipped = new AtomicInteger();
+    private final AtomicInteger failed = new AtomicInteger();
+    private final AtomicLong maxTxNanos = new AtomicLong();
+
+    private ExpiryRun(LocalDateTime deadline, ExpiryMode mode, int chunkSize) {
+      this.deadline = deadline;
+      this.mode = mode;
+      this.chunkSize = chunkSize;
+    }
+
+    private int total() {
+      return processed.get() + skipped.get() + failed.get();
+    }
   }
 }

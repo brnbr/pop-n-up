@@ -1,156 +1,71 @@
 package com.popnup.popnupbackend.domain.reservation.service;
 
-import com.popnup.popnupbackend.domain.member.entity.Member;
-import com.popnup.popnupbackend.domain.member.exception.MemberErrorCode;
-import com.popnup.popnupbackend.domain.member.repository.MemberRepository;
-import com.popnup.popnupbackend.domain.qrcode.service.QrService;
-import com.popnup.popnupbackend.domain.reservation.dto.request.ReservationCreateRequest;
+import com.popnup.popnupbackend.domain.reservation.dto.request.CheckInRequest;
 import com.popnup.popnupbackend.domain.reservation.dto.response.AdminReservationResponse;
-import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationCreateResponse;
+import com.popnup.popnupbackend.domain.reservation.dto.response.CheckInResponse;
+import com.popnup.popnupbackend.domain.reservation.dto.response.CursorPage;
 import com.popnup.popnupbackend.domain.reservation.dto.response.ReservationResponse;
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import com.popnup.popnupbackend.domain.reservation.enums.ReservationStatus;
 import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCode;
 import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepository;
-import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
-import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
-import com.popnup.popnupbackend.domain.schedule.repository.ScheduleRepository;
-import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCache;
-import com.popnup.popnupbackend.domain.schedule.support.KstTime;
-import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
+import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepositoryCustom.AdminCursor;
+import com.popnup.popnupbackend.domain.reservation.repository.ReservationRepositoryCustom.MemberCursor;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataIntegrityViolationException;
+import java.util.function.Function;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 public class ReservationService {
 
-  private static final int MAX_PERSON_COUNT = 10;
   private static final int MAX_PAGE_SIZE = 100;
 
   private final ReservationRepository reservationRepository;
-  private final ScheduleRepository scheduleRepository;
-  private final MemberRepository memberRepository;
   private final QrService qrService;
   private final ReservationCancelManager reservationCancelManager;
-  private final ScheduleCapacityCache scheduleCapacityCache;
-  private final ReservationNumberGenerator reservationNumberGenerator;
-  private final TransactionTemplate transactionTemplate;
+  private final TransactionTemplate readOnlyTransaction;
 
-  @Value("${reservation.booking.sold-out-precheck:true}")
-  private boolean soldOutPrecheck;
-
-  @RateLimiter(name = "reservationBooking")
-  public ReservationCreateResponse bookWithConditionalUpdate(
-      Long memberId, ReservationCreateRequest request) {
-    if (request.getPersonCount() == null
-        || request.getPersonCount() < 1
-        || request.getPersonCount() > MAX_PERSON_COUNT) {
-      throw ReservationErrorCode.INVALID_PERSON_COUNT.toException();
-    }
-
-    if (soldOutPrecheck
-        && scheduleCapacityCache.isSoldOut(request.getScheduleId(), request.getPersonCount())) {
-      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
-    }
-
-    return transactionTemplate.execute(status -> book(memberId, request));
-  }
-
-  private ReservationCreateResponse book(Long memberId, ReservationCreateRequest request) {
-    Member member = findMember(memberId);
-    validateNoActiveReservation(request.getScheduleId(), memberId);
-    reserveInRedis(request);
-
-    try {
-      Reservation reservation = createReservation(member, request);
-      return ReservationCreateResponse.from(
-          reservation.getId(), reservation.getReservationNumber());
-    } catch (Exception e) {
-      scheduleCapacityCache.compensate(request.getScheduleId(), request.getPersonCount());
-      throw e;
-    }
-  }
-
-  private Member findMember(Long memberId) {
-    return memberRepository
-        .findById(memberId)
-        .orElseThrow(MemberErrorCode.MEMBER_NOT_FOUND::toException);
-  }
-
-  private void validateNoActiveReservation(Long scheduleId, Long memberId) {
-    if (reservationRepository.hasActiveReservation(scheduleId, memberId)) {
-      throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
-    }
-  }
-
-  private void reserveInRedis(ReservationCreateRequest request) {
-    boolean passed =
-        scheduleCapacityCache.tryReserve(request.getScheduleId(), request.getPersonCount());
-    if (!passed) {
-      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
-    }
-  }
-
-  private Reservation createReservation(Member member, ReservationCreateRequest request) {
-    Schedule schedule =
-        scheduleRepository
-            .findByIdForValidation(request.getScheduleId())
-            .orElseThrow(ScheduleErrorCode.SCHEDULE_NOT_FOUND::toException);
-    schedule.validateBookable(KstTime.now());
-
-    increaseCapacity(request);
-
-    return saveReservation(
-        Reservation.createReservation(
-            reservationNumberGenerator.generate(), member, schedule, request.getPersonCount()));
-  }
-
-  private void increaseCapacity(ReservationCreateRequest request) {
-    int affectedRows =
-        scheduleRepository.tryIncreaseCapacity(request.getScheduleId(), request.getPersonCount());
-    if (affectedRows == 0) {
-      throw ScheduleErrorCode.SCHEDULE_CAPACITY_EXCEEDED.toException();
-    }
-  }
-
-  private Reservation saveReservation(Reservation reservation) {
-    try {
-      return reservationRepository.save(reservation);
-    } catch (DataIntegrityViolationException e) {
-      if (isActiveMemberViolation(e)) {
-        throw ReservationErrorCode.DUPLICATE_USER_RESERVATION.toException();
-      }
-      throw e;
-    }
-  }
-
-  private boolean isActiveMemberViolation(DataIntegrityViolationException e) {
-    String message = e.getMostSpecificCause().getMessage();
-    return message != null && message.toLowerCase().contains(Reservation.UK_ACTIVE_MEMBER);
+  public ReservationService(
+      ReservationRepository reservationRepository,
+      QrService qrService,
+      ReservationCancelManager reservationCancelManager,
+      PlatformTransactionManager transactionManager) {
+    this.reservationRepository = reservationRepository;
+    this.qrService = qrService;
+    this.reservationCancelManager = reservationCancelManager;
+    this.readOnlyTransaction = new TransactionTemplate(transactionManager);
+    this.readOnlyTransaction.setReadOnly(true);
   }
 
   @Transactional
-  public void confirmReservation(Long reservationId, boolean paymentSucceeded) {
+  public void confirmReservation(Long reservationId) {
     Reservation reservation =
         reservationRepository
             .findByIdWithPessimisticLock(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    reservation.confirm(paymentSucceeded);
+    reservation.confirm();
+  }
+
+  @Transactional
+  public CheckInResponse checkIn(CheckInRequest request) {
+    Reservation reservation =
+        reservationRepository
+            .findByReservationNumberWithPessimisticLock(request.getReservationNumber())
+            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+
+    reservation.checkIn(LocalDateTime.now());
+    return CheckInResponse.from(reservation);
   }
 
   public byte[] getReservationQrCode(Long memberId, Long reservationId) {
     String reservationNumber =
-        readOnlyTransaction().execute(status -> findQrTargetNumber(memberId, reservationId));
+        readOnlyTransaction.execute(status -> findQrTargetNumber(memberId, reservationId));
     return qrService.generateQrCodeImage(reservationNumber);
   }
 
@@ -160,69 +75,99 @@ public class ReservationService {
             .findById(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    if (!reservation.isOwnedBy(memberId)) {
-      throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
-    }
-
-    if (reservation.getStatus() != ReservationStatus.CONFIRMED) {
-      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
-    }
-
+    reservation.validateOwnedBy(memberId);
+    reservation.validateQrIssuable();
     return reservation.getReservationNumber();
-  }
-
-  private TransactionTemplate readOnlyTransaction() {
-    TransactionTemplate readOnly =
-        new TransactionTemplate(transactionTemplate.getTransactionManager());
-    readOnly.setReadOnly(true);
-    return readOnly;
   }
 
   @Transactional
   public void cancel(Long memberId, Long reservationId) {
     Reservation reservation =
         reservationRepository
-            .findById(reservationId)
+            .findByIdWithPessimisticLock(reservationId)
             .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
 
-    if (!reservation.isOwnedBy(memberId)) {
-      throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
-    }
-
-    if (reservation.getStatus() == ReservationStatus.CONFIRMED
-        && reservation.getSchedule().isAlreadyStarted(KstTime.now())) {
-      throw ReservationErrorCode.CANCEL_NOT_ALLOWED_AFTER_START.toException();
-    }
-
+    reservation.validateOwnedBy(memberId);
+    reservation.validateCancelable(LocalDateTime.now());
     reservationCancelManager.cancel(reservationId);
   }
 
   @Transactional(readOnly = true)
-  public List<ReservationResponse> allReservations(Long memberId, int page, int size) {
-    int safePage = Math.max(page, 0);
-    int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
-    return reservationRepository.getAllReservation(memberId, safePage, safeSize).stream()
+  public List<ReservationResponse> getMemberReservations(Long memberId, int page, int size) {
+    return reservationRepository
+        .findMemberReservations(memberId, safePage(page), safeSize(size))
+        .stream()
         .map(ReservationResponse::from)
         .toList();
   }
 
   @Transactional(readOnly = true)
-  public ReservationResponse oneReservation(Long memberId, Long reservationId) {
-    return reservationRepository
-        .findByIdAndMemberId(reservationId, memberId)
-        .map(ReservationResponse::from)
-        .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+  public ReservationResponse getMemberReservation(Long memberId, Long reservationId) {
+    Reservation reservation =
+        reservationRepository
+            .findById(reservationId)
+            .orElseThrow(ReservationErrorCode.RESERVATION_NOT_FOUND::toException);
+
+    reservation.validateOwnedBy(memberId);
+    return ReservationResponse.from(reservation);
   }
 
   @Transactional(readOnly = true)
   public List<AdminReservationResponse> getAdminReservations(
       Long popupId, LocalDate scheduleDate, ReservationStatus status, int page, int size) {
-    int safePage = Math.max(page, 0);
-    int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
     return reservationRepository
-        .findAdminReservations(popupId, scheduleDate, status, safePage, safeSize)
+        .findAdminReservations(popupId, scheduleDate, status, safePage(page), safeSize(size))
         .stream()
         .map(AdminReservationResponse::from)
         .toList();
+  }
+
+  @Transactional(readOnly = true)
+  public CursorPage<ReservationResponse> getMemberReservationsByCursor(
+      Long memberId, String cursor, int size) {
+    int limit = safeSize(size);
+    List<Reservation> rows =
+        reservationRepository.findMemberReservationsAfter(
+            memberId, ReservationCursor.decodeMember(cursor), limit + 1);
+    return toPage(
+        rows,
+        limit,
+        ReservationResponse::from,
+        last -> ReservationCursor.encode(new MemberCursor(last.getCreatedAt(), last.getId())));
+  }
+
+  @Transactional(readOnly = true)
+  public CursorPage<AdminReservationResponse> getAdminReservationsByCursor(
+      Long popupId, LocalDate scheduleDate, ReservationStatus status, String cursor, int size) {
+    int limit = safeSize(size);
+    List<Reservation> rows =
+        reservationRepository.findAdminReservationsAfter(
+            popupId, scheduleDate, status, ReservationCursor.decodeAdmin(cursor), limit + 1);
+    return toPage(
+        rows,
+        limit,
+        AdminReservationResponse::from,
+        last ->
+            ReservationCursor.encode(
+                new AdminCursor(last.getScheduleDate(), last.getStartTime(), last.getId())));
+  }
+
+  private static <T> CursorPage<T> toPage(
+      List<Reservation> rows,
+      int limit,
+      Function<Reservation, T> mapper,
+      Function<Reservation, String> cursorOf) {
+    boolean hasMore = rows.size() > limit;
+    List<Reservation> page = hasMore ? rows.subList(0, limit) : rows;
+    String next = hasMore ? cursorOf.apply(page.get(page.size() - 1)) : null;
+    return new CursorPage<>(page.stream().map(mapper).toList(), next, hasMore);
+  }
+
+  private static int safePage(int page) {
+    return Math.max(page, 0);
+  }
+
+  private static int safeSize(int size) {
+    return Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
   }
 }

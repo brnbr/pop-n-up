@@ -1,18 +1,20 @@
 package com.popnup.popnupbackend.domain.schedule.service;
 
-import java.time.Duration;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
+import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.inProgressKey;
+import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.maxKey;
+import static com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityKeys.usedKey;
+
+import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
+import com.popnup.popnupbackend.domain.schedule.service.ScheduleCapacityCounterStore.Restore;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisOperations;
-import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -23,98 +25,60 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class ScheduleCapacityCache {
 
-  private static final String USED_KEY_PREFIX = "schedule:capacity:used:";
-  private static final String MAX_KEY_PREFIX = "schedule:capacity:max:";
   private static final int RELEASE_MAX_ATTEMPTS = 3;
-
-  private final StringRedisTemplate redisTemplate;
+  private static final long TRY_RESERVE_KEY_MISSING = -1L;
+  private static final long TRY_RESERVE_SUCCESS = 1L;
+  private static final long TRY_RESERVE_IN_PROGRESS = 2L;
 
   private static final RedisScript<Long> TRY_RESERVE_SCRIPT =
-      new DefaultRedisScript<>(
-          "local max = redis.call('GET', KEYS[1]) "
-              + "if max == false then return -1 end "
-              + "local newUsed = redis.call('INCRBY', KEYS[2], ARGV[1]) "
-              + "if newUsed > tonumber(max) then "
-              + "  redis.call('DECRBY', KEYS[2], ARGV[1]) "
-              + "  return 0 "
-              + "end "
-              + "return 1",
-          Long.class);
-
+      loadScript("redis/schedule-capacity-try-reserve.lua");
   private static final RedisScript<Long> RELEASE_SCRIPT =
-      new DefaultRedisScript<>(
-          "local current = tonumber(redis.call('GET', KEYS[1]) or '0') "
-              + "local newVal = current - tonumber(ARGV[1]) "
-              + "if newVal < 0 then newVal = 0 end "
-              + "redis.call('SET', KEYS[1], newVal) "
-              + "return newVal",
-          Long.class);
+      loadScript("redis/schedule-capacity-release.lua");
+  private static final RedisScript<Long> RELEASE_EVENT_SCRIPT =
+      loadScript("redis/schedule-capacity-release-event.lua");
+  private static final String APPLIED_EVENT_KEY_PREFIX = "outbox:applied:";
+  public static final String APPLIED_EVENT_COUNT_KEY = "outbox:applied:count";
+  private static final String APPLIED_EVENT_TTL_SECONDS = String.valueOf(24 * 60 * 60);
 
-  public void init(Long scheduleId, LocalDate scheduleDate, int maxCapacity) {
-    try {
-      Duration ttl = ttlUntilEndOfDate(scheduleDate);
-      redisTemplate.opsForValue().set(maxKey(scheduleId), String.valueOf(maxCapacity), ttl);
-      redisTemplate.opsForValue().set(usedKey(scheduleId), "0", ttl);
-    } catch (Exception e) {
-      log.warn("[ScheduleCapacityCache] Redis 초기화 실패, DB만으로 동작합니다. scheduleId={}", scheduleId, e);
+  public enum ReserveResult {
+    RESERVED,
+    SOLD_OUT,
+    IN_PROGRESS
+  }
+
+  private final StringRedisTemplate redisTemplate;
+  private final ScheduleCapacityCounterStore counterStore;
+
+  @Value("${reservation.booking.in-progress-ttl-ms:10000}")
+  private long inProgressTtlMs;
+
+  private static RedisScript<Long> loadScript(String path) {
+    RedisScript<Long> script = RedisScript.of(new ClassPathResource(path), Long.class);
+    script.getScriptAsString();
+    return script;
+  }
+
+  public void initAfterCommit(List<Schedule> schedules) {
+    if (schedules.isEmpty()) {
+      return;
+    }
+    List<Restore> restores =
+        schedules.stream()
+            .map(s -> new Restore(s.getId(), s.getScheduleDate(), s.getMaxCapacity(), 0))
+            .toList();
+    runAfterCommit(() -> initAll(restores));
+  }
+
+  private void initAll(List<Restore> restores) {
+    if (!counterStore.restoreAll(restores)) {
+      log.warn(
+          "[ScheduleCapacityCache] Redis 초기화 실패, DB만으로 동작합니다. 재동기화가 채웁니다. count={}",
+          restores.size());
     }
   }
 
-  public record Counter(Long max, Long used) {}
-
-  public record Restore(Long scheduleId, LocalDate scheduleDate, long max, long used) {}
-
-  public List<Counter> readCounters(List<Long> scheduleIds) {
-    try {
-      List<String> keys = new java.util.ArrayList<>(scheduleIds.size() * 2);
-      for (Long id : scheduleIds) {
-        keys.add(maxKey(id));
-        keys.add(usedKey(id));
-      }
-      List<String> values = redisTemplate.opsForValue().multiGet(keys);
-      if (values == null || values.size() != keys.size()) {
-        return null;
-      }
-      List<Counter> counters = new java.util.ArrayList<>(scheduleIds.size());
-      for (int i = 0; i < scheduleIds.size(); i++) {
-        String max = values.get(i * 2);
-        String used = values.get(i * 2 + 1);
-        counters.add(
-            new Counter(
-                max == null ? null : Long.parseLong(max),
-                used == null ? null : Long.parseLong(used)));
-      }
-      return counters;
-    } catch (Exception e) {
-      log.warn("[ScheduleCapacityCache] Redis 카운터 읽기 실패, 재동기화를 건너뜁니다.", e);
-      return null;
-    }
-  }
-
-  @SuppressWarnings({"unchecked", "rawtypes"})
-  public boolean restoreAll(List<Restore> restores) {
-    if (restores.isEmpty()) {
-      return true;
-    }
-    try {
-      redisTemplate.executePipelined(
-          new SessionCallback<Object>() {
-            @Override
-            public Object execute(RedisOperations operations) {
-              ValueOperations<String, String> ops = operations.opsForValue();
-              for (Restore r : restores) {
-                Duration ttl = ttlUntilEndOfDate(r.scheduleDate());
-                ops.set(maxKey(r.scheduleId()), String.valueOf(r.max()), ttl);
-                ops.set(usedKey(r.scheduleId()), String.valueOf(r.used()), ttl);
-              }
-              return null;
-            }
-          });
-      return true;
-    } catch (Exception e) {
-      log.warn("[ScheduleCapacityCache] Redis 카운터 덮어쓰기 실패. count={}", restores.size(), e);
-      return false;
-    }
+  public static List<Object> capacityKeys(Long scheduleId) {
+    return List.of(maxKey(scheduleId), usedKey(scheduleId));
   }
 
   public boolean isSoldOut(Long scheduleId, int count) {
@@ -131,42 +95,70 @@ public class ScheduleCapacityCache {
     }
   }
 
-  public boolean tryReserve(Long scheduleId, int count) {
+  public ReserveResult tryReserve(Long scheduleId, Long memberId, int count) {
     try {
-      List<String> keys = List.of(maxKey(scheduleId), usedKey(scheduleId));
-      Long result = redisTemplate.execute(TRY_RESERVE_SCRIPT, keys, String.valueOf(count));
+      List<String> keys =
+          List.of(maxKey(scheduleId), usedKey(scheduleId), inProgressKey(scheduleId, memberId));
+      Long result =
+          redisTemplate.execute(
+              TRY_RESERVE_SCRIPT, keys, String.valueOf(count), String.valueOf(inProgressTtlMs));
 
-      if (result == null || result == -1L) {
-        return true;
+      if (result == null || result == TRY_RESERVE_KEY_MISSING || result == TRY_RESERVE_SUCCESS) {
+        return ReserveResult.RESERVED;
       }
-      return result == 1L;
+      if (result == TRY_RESERVE_IN_PROGRESS) {
+        return ReserveResult.IN_PROGRESS;
+      }
+      return ReserveResult.SOLD_OUT;
     } catch (Exception e) {
       log.warn("[ScheduleCapacityCache] Redis 조회/증가 실패, 필터링을 건너뜁니다. scheduleId={}", scheduleId, e);
-      return true;
+      return ReserveResult.RESERVED;
     }
   }
 
-  public void release(Long scheduleId, int count) {
+  public boolean applySeatRelease(Long eventId, Map<Long, Integer> seatsBySchedule) {
+    List<String> keys = new ArrayList<>(seatsBySchedule.size() + 2);
+    List<String> args = new ArrayList<>(seatsBySchedule.size() + 2);
+    keys.add(APPLIED_EVENT_KEY_PREFIX + eventId);
+    keys.add(APPLIED_EVENT_COUNT_KEY);
+    args.add(APPLIED_EVENT_TTL_SECONDS);
+    args.add("");
+    seatsBySchedule.forEach(
+        (scheduleId, count) -> {
+          keys.add(usedKey(scheduleId));
+          args.add(String.valueOf(count));
+        });
+    Long result = redisTemplate.execute(RELEASE_EVENT_SCRIPT, keys, args.toArray());
+    return result != null && result == 1L;
+  }
+
+  public void releaseAfterCommit(Long scheduleId, int count) {
+    runAfterCommit(() -> releaseNow(scheduleId, count));
+  }
+
+  private void runAfterCommit(Runnable action) {
     if (TransactionSynchronizationManager.isSynchronizationActive()) {
       TransactionSynchronizationManager.registerSynchronization(
           new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-              doRelease(scheduleId, count);
+              action.run();
             }
           });
     } else {
-      doRelease(scheduleId, count);
+      action.run();
     }
   }
 
-  public void compensate(Long scheduleId, int count) {
-    doRelease(scheduleId, count);
+  public void releaseNow(Long scheduleId, int count) {
+    release(scheduleId, Collections.singletonList(usedKey(scheduleId)), count);
   }
 
-  private void doRelease(Long scheduleId, int count) {
-    List<String> keys = Collections.singletonList(usedKey(scheduleId));
+  public void releaseNow(Long scheduleId, Long memberId, int count) {
+    release(scheduleId, List.of(usedKey(scheduleId), inProgressKey(scheduleId, memberId)), count);
+  }
 
+  private void release(Long scheduleId, List<String> keys, int count) {
     for (int attempt = 1; attempt <= RELEASE_MAX_ATTEMPTS; attempt++) {
       try {
         redisTemplate.execute(RELEASE_SCRIPT, keys, String.valueOf(count));
@@ -187,19 +179,5 @@ public class ScheduleCapacityCache {
         }
       }
     }
-  }
-
-  private Duration ttlUntilEndOfDate(LocalDate scheduleDate) {
-    LocalDateTime endOfDay = LocalDateTime.of(scheduleDate, LocalTime.MAX);
-    Duration ttl = Duration.between(LocalDateTime.now(), endOfDay);
-    return ttl.isNegative() ? Duration.ofMinutes(1) : ttl.plusHours(1);
-  }
-
-  private String usedKey(Long scheduleId) {
-    return USED_KEY_PREFIX + scheduleId;
-  }
-
-  private String maxKey(Long scheduleId) {
-    return MAX_KEY_PREFIX + scheduleId;
   }
 }

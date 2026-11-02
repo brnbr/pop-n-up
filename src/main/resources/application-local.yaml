@@ -33,7 +33,11 @@ naver:
     client-id: ${NAVER_MAPS_CLIENT_ID}
     client-secret: ${NAVER_MAPS_CLIENT_SECRET}
 
-
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, prometheus
   metrics:
     enable:
       hikaricp: true
@@ -48,11 +52,3 @@ server:
       min-spare: 20
     accept-count: 300
     connection-timeout: 20000
-
-resilience4j:
-  ratelimiter:
-    instances:
-      reservationBooking:
-        limit-for-period: 200000
-        limit-refresh-period: 1s
-        timeout-duration: 0

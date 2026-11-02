@@ -1,4 +1,4 @@
-package com.popnup.popnupbackend.domain.qrcode.dto.response;
+package com.popnup.popnupbackend.domain.reservation.dto.response;
 
 import com.popnup.popnupbackend.domain.reservation.entity.Reservation;
 import lombok.Getter;

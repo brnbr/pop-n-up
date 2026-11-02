@@ -4,11 +4,15 @@ import static com.popnup.popnupbackend.domain.popup.entity.QPopup.popup;
 import static com.popnup.popnupbackend.domain.schedule.entity.QSchedule.schedule;
 
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
+import com.popnup.popnupbackend.global.support.PessimisticLockSupport;
+import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.CaseBuilder;
+import com.querydsl.core.types.dsl.NumberExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import jakarta.persistence.LockModeType;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 
@@ -50,15 +54,8 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
 
   @Override
   public Optional<Schedule> findByIdWithPessimisticLock(Long id) {
-    Schedule result =
-        queryFactory
-            .selectFrom(schedule)
-            .where(schedule.id.eq(id))
-            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
-            .setHint("jakarta.persistence.lock.timeout", 3000)
-            .fetchOne();
-
-    return Optional.ofNullable(result);
+    return PessimisticLockSupport.fetchOneForUpdate(
+        queryFactory.selectFrom(schedule).where(schedule.id.eq(id)));
   }
 
   @Override
@@ -76,7 +73,7 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
   }
 
   @Override
-  public Optional<Schedule> findByIdForValidation(Long id) {
+  public Optional<Schedule> findWithPopupById(Long id) {
     Schedule result =
         queryFactory
             .selectFrom(schedule)
@@ -98,5 +95,46 @@ public class ScheduleRepositoryCustomImpl implements ScheduleRepositoryCustom {
             .execute();
 
     return (int) affectedRows;
+  }
+
+  @Override
+  public int tryDecreaseCapacities(Map<Long, Integer> countsBySchedule) {
+    if (countsBySchedule.isEmpty()) {
+      return 0;
+    }
+    CaseBuilder.Cases<Integer, NumberExpression<Integer>> cases = null;
+    for (Map.Entry<Long, Integer> e : countsBySchedule.entrySet()) {
+      cases =
+          cases == null
+              ? new CaseBuilder().when(schedule.id.eq(e.getKey())).then(e.getValue())
+              : cases.when(schedule.id.eq(e.getKey())).then(e.getValue());
+    }
+    NumberExpression<Integer> count = cases.otherwise(0);
+
+    long affectedRows =
+        queryFactory
+            .update(schedule)
+            .set(schedule.nowCapacity, schedule.nowCapacity.subtract(count))
+            .where(schedule.id.in(countsBySchedule.keySet()), schedule.nowCapacity.goe(count))
+            .execute();
+
+    return (int) affectedRows;
+  }
+
+  @Override
+  public List<CapacitySnapshot> findCapacitySnapshots(LocalDate from, Long afterId, int limit) {
+    return queryFactory
+        .select(
+            Projections.constructor(
+                CapacitySnapshot.class,
+                schedule.id,
+                schedule.scheduleDate,
+                schedule.maxCapacity,
+                schedule.nowCapacity))
+        .from(schedule)
+        .where(schedule.scheduleDate.goe(from), schedule.id.gt(afterId))
+        .orderBy(schedule.id.asc())
+        .limit(limit)
+        .fetch();
   }
 }

@@ -5,15 +5,20 @@ import com.popnup.popnupbackend.domain.popup.entity.PopupStatus;
 import com.popnup.popnupbackend.domain.schedule.exception.ScheduleErrorCode;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
 @Getter
+@DynamicUpdate
 @Table(
     name = "schedules",
     indexes = {
@@ -24,6 +29,8 @@ import lombok.NoArgsConstructor;
     })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Schedule extends BaseEntity {
+
+  public static final Duration CHECK_IN_GRACE = Duration.ofMinutes(20);
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -83,6 +90,43 @@ public class Schedule extends BaseEntity {
     return new Schedule(popup, scheduleDate, startTime, endTime, maxCapacity);
   }
 
+  public static List<Schedule> createSlots(
+      Popup popup,
+      LocalDate scheduleDate,
+      LocalTime openTime,
+      LocalTime closeTime,
+      Integer intervalMinutes,
+      Integer maxCapacity) {
+    if (intervalMinutes == null || intervalMinutes <= 0) {
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
+    }
+
+    List<Schedule> slots = new ArrayList<>();
+    LocalTime start = openTime;
+    while (start.isBefore(closeTime)) {
+      LocalTime end = start.plusMinutes(intervalMinutes);
+      if (end.isAfter(closeTime) || end.isBefore(start)) {
+        break;
+      }
+      slots.add(createSchedule(popup, scheduleDate, start, end, maxCapacity));
+      start = end;
+    }
+
+    if (slots.isEmpty()) {
+      throw ScheduleErrorCode.INVALID_TIME_RANGE.toException();
+    }
+    return slots;
+  }
+
+  public static int remainingOf(int maxCapacity, int nowCapacity) {
+    return Math.max(0, maxCapacity - nowCapacity);
+  }
+
+  public static boolean hasStarted(
+      LocalDate scheduleDate, LocalTime startTime, LocalDateTime currentDateTime) {
+    return LocalDateTime.of(scheduleDate, startTime).isBefore(currentDateTime);
+  }
+
   public void validateBookable(LocalDateTime currentDateTime) {
     if (!this.isActive) {
       throw ScheduleErrorCode.SCHEDULE_INACTIVE.toException();
@@ -91,26 +135,22 @@ public class Schedule extends BaseEntity {
       throw ScheduleErrorCode.SCHEDULE_ALREADY_STARTED.toException();
     }
     if (this.popup.getStatus() != PopupStatus.OPEN) {
-      throw ScheduleErrorCode.SCHEDULE_POPUP_NOT_FOUND.toException();
+      throw ScheduleErrorCode.POPUP_NOT_OPEN.toException();
     }
   }
 
-  public int getRemainingCapacity() {
-    return Math.max(0, this.maxCapacity - this.nowCapacity);
-  }
-
-  public boolean isSoldOut() {
-    return getRemainingCapacity() == 0;
-  }
-
   public boolean isAlreadyStarted(LocalDateTime currentDateTime) {
-    LocalDateTime startDateTime = LocalDateTime.of(this.scheduleDate, this.startTime);
-    return startDateTime.isBefore(currentDateTime);
+    return hasStarted(this.scheduleDate, this.startTime, currentDateTime);
+  }
+
+  public Long getPopupId() {
+    return popup != null ? popup.getId() : null;
   }
 
   public boolean isCheckInAvailable(LocalDateTime currentDateTime) {
-    return this.scheduleDate.equals(currentDateTime.toLocalDate())
-        && !currentDateTime.toLocalTime().isAfter(this.endTime);
+    return !currentDateTime.toLocalDate().isBefore(this.scheduleDate)
+        && !currentDateTime.isAfter(
+            LocalDateTime.of(this.scheduleDate, this.startTime).plus(CHECK_IN_GRACE));
   }
 
   public void updateActiveStatus(boolean isActive) {

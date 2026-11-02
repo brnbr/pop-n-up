@@ -6,6 +6,9 @@ import com.popnup.popnupbackend.domain.reservation.exception.ReservationErrorCod
 import com.popnup.popnupbackend.domain.schedule.entity.Schedule;
 import com.popnup.popnupbackend.global.entity.BaseEntity;
 import jakarta.persistence.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -21,7 +24,11 @@ import lombok.NoArgsConstructor;
     },
     indexes = {
       @Index(name = "idx_reservation_status_created_at", columnList = "status, created_at"),
-      @Index(name = "idx_reservation_schedule", columnList = "schedule_id")
+      @Index(name = "idx_reservation_schedule", columnList = "schedule_id"),
+      @Index(
+          name = "idx_reservation_popup_date_time",
+          columnList = "popup_id, schedule_date, start_time, id"),
+      @Index(name = "idx_reservation_member_created", columnList = "member_id, created_at")
     })
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Reservation extends BaseEntity {
@@ -53,6 +60,15 @@ public class Reservation extends BaseEntity {
   @Column(name = "active_member_id")
   private Long activeMemberId;
 
+  @Column(name = "popup_id")
+  private Long popupId;
+
+  @Column(name = "schedule_date")
+  private LocalDate scheduleDate;
+
+  @Column(name = "start_time")
+  private LocalTime startTime;
+
   private Reservation(
       String reservationNumber,
       Member member,
@@ -65,6 +81,9 @@ public class Reservation extends BaseEntity {
     this.personCount = personCount;
     this.status = status;
     this.activeMemberId = member.getId();
+    this.popupId = schedule.getPopupId();
+    this.scheduleDate = schedule.getScheduleDate();
+    this.startTime = schedule.getStartTime();
   }
 
   public static Reservation createReservation(
@@ -73,34 +92,50 @@ public class Reservation extends BaseEntity {
         reservationNumber, member, schedule, personCount, ReservationStatus.PENDING);
   }
 
-  public void confirm(boolean paymentSucceeded) {
-    if (this.status != ReservationStatus.PENDING) {
+  public void confirm() {
+    if (!this.status.canConfirm()) {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
-    }
-
-    if (!paymentSucceeded) {
-      throw ReservationErrorCode.PAYMENT_NOT_COMPLETED.toException();
     }
 
     this.status = ReservationStatus.CONFIRMED;
   }
 
-  public void checkIn() {
+  public void validatePayable() {
+    if (!this.status.canConfirm()) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
+  }
+
+  public void checkIn(LocalDateTime currentDateTime) {
     if (this.status == ReservationStatus.USED) {
       throw ReservationErrorCode.ALREADY_PROCESSED_RESERVATION.toException();
     }
-    if (this.status != ReservationStatus.CONFIRMED) {
+    if (!this.status.canCheckIn()) {
       throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
+    if (!this.schedule.isCheckInAvailable(currentDateTime)) {
+      throw ReservationErrorCode.CHECK_IN_NOT_AVAILABLE_TIME.toException();
     }
 
     this.status = ReservationStatus.USED;
   }
 
-  public boolean isOwnedBy(Long memberId) {
-    if (memberId == null || this.member == null) {
-      return false;
+  public void validateOwnedBy(Long memberId) {
+    if (memberId == null || !memberId.equals(this.member.getId())) {
+      throw ReservationErrorCode.UNAUTHORIZED_RESERVATION_ACCESS.toException();
     }
+  }
 
-    return memberId.equals(this.member.getId());
+  public void validateCancelable(LocalDateTime currentDateTime) {
+    if (this.status == ReservationStatus.CONFIRMED
+        && this.schedule.isAlreadyStarted(currentDateTime)) {
+      throw ReservationErrorCode.CANCEL_NOT_ALLOWED_AFTER_START.toException();
+    }
+  }
+
+  public void validateQrIssuable() {
+    if (this.status != ReservationStatus.CONFIRMED) {
+      throw ReservationErrorCode.INVALID_RESERVATION_STATUS.toException();
+    }
   }
 }
