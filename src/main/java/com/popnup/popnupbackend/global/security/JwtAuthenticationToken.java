@@ -16,8 +16,6 @@ public class JwtAuthenticationToken extends AbstractAuthenticationToken {
     super.setAuthenticated(true);
   }
 
-  // @AuthenticationPrincipal은 SecurityContext에 저장된 Authentication의
-  // getPrincipal() 반환값을 꺼내므로, 컨트롤러의 AuthUser 파라미터로 이 객체가 주입된다.
   @Override
   public AuthUser getPrincipal() {
     return principal;

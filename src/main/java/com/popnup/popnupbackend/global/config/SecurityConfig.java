@@ -19,8 +19,8 @@ import org.springframework.security.web.authentication.AnonymousAuthenticationFi
 
 @Configuration
 @RequiredArgsConstructor
-@EnableWebSecurity // Spring Security의 웹 요청 보안 설정을 활성화
-@EnableMethodSecurity(securedEnabled = true) // 메서드에 선언한 @Secured 권한 검사를 활성화
+@EnableWebSecurity
+@EnableMethodSecurity(securedEnabled = true)
 public class SecurityConfig {
 
   private final JwtFilter jwtFilter;
