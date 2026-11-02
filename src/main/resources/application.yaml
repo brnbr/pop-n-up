@@ -10,6 +10,13 @@ spring:
     open-in-view: false
     show-sql: true
 
+  # 예약 작업(결제 만료 · 노쇼 · 정원 재동기화 · 대기열 입장)이 서로 기다리지 않게 하나씩 스레드를 둔다.
+  # 기본값 1이면 만료 처리가 길어지는 동안 대기열 입장 · 재동기화가 멈춘다
+  task:
+    scheduling:
+      pool:
+        size: 4
+
   security:
     oauth2:
       client:
@@ -44,6 +51,11 @@ kakaopay:
 
 jwt:
   secret: 784dK3Hk+sSIkd37at/v1xMeOYLDaZviwulL2vHU0KvM5PK2cRAjbNMCodkD88gw7O6ueENnWQ94AG0WztDLCA==
+  blacklist:
+    # 블랙리스트 조회 전용 시간 초과. Redis가 응답하지 않으면 이만큼 기다린 뒤 조회를 건너뜀 (끊긴 것을 알면 기다리지 않음)
+    # 근거 (2026-10-30, 1만 명 동시 도착): 가장 느린 조회가 200~300 ms 구간, 300 ms 초과 0건 → 300 ms + 여유 100 ms.
+    # 100 ms로 두면 같은 부하에서 조회의 12~16%가 시간 초과로 건너뛰어짐 (원자료 buha-test/results/plan/v3/pre-blacklist)
+    timeout-ms: 400
 
 naver:
   maps:

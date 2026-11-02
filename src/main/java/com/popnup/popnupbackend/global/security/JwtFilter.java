@@ -14,6 +14,8 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,6 +23,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtFilter extends OncePerRequestFilter {
@@ -58,7 +61,7 @@ public class JwtFilter extends OncePerRequestFilter {
     String token = authorizationHeader.substring("Bearer ".length());
 
     try {
-      if (jwtBlacklistService.isBlacklisted(token)) {
+      if (isBlacklisted(token)) {
         sendUnauthorized(response, AuthErrorCode.BLACKLISTED_TOKEN);
         return;
       }
@@ -77,6 +80,18 @@ public class JwtFilter extends OncePerRequestFilter {
     }
 
     filterChain.doFilter(request, response);
+  }
+
+  // 블랙리스트(로그아웃한 토큰) 조회가 Redis 오류 · 시간 초과로 실패하면 블랙리스트가 아닌 것으로 보고 서명 검증만으로 인증한다.
+  // 처리하지 않으면 예외가 /error로 넘어가 인증 실패(401)로 응답돼, Redis가 잠깐 느려진 것만으로 정상 사용자가 튕긴다.
+  // 대가: Redis 장애 동안에는 로그아웃한 토큰도 만료 전까지 통과한다
+  private boolean isBlacklisted(String token) {
+    try {
+      return jwtBlacklistService.isBlacklisted(token);
+    } catch (DataAccessException e) {
+      log.warn("[JwtFilter] 블랙리스트 조회 실패, 확인을 건너뜁니다: {}", e.getMessage());
+      return false;
+    }
   }
 
   private void authenticate(String token, HttpServletRequest request) {
