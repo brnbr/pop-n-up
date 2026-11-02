@@ -5,8 +5,6 @@ plugins {
     id 'com.diffplug.spotless' version '6.23.3' // Spotless 플러그인
 }
 
-ext['testcontainers.version'] = '2.0.5'
-
 group = 'com'
 version = '0.0.1-SNAPSHOT'
 description = 'popnup'
@@ -56,26 +54,22 @@ dependencies {
     implementation 'io.github.openfeign.querydsl:querydsl-jpa:7.5'
     annotationProcessor 'io.github.openfeign.querydsl:querydsl-apt:7.5:jpa'
 
-    //UUID version 7
-    implementation 'com.fasterxml.uuid:java-uuid-generator:4.3.0'
-
     //ZXing
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.google.zxing:javase:3.5.3'
 
-    //크롤링
-    implementation 'org.jsoup:jsoup:1.18.1'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-
-    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-    testImplementation 'org.testcontainers:testcontainers-mysql'
 
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-aspectj'
-    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
     implementation 'net.javacrumbs.shedlock:shedlock-spring:5.16.0'
     implementation 'net.javacrumbs.shedlock:shedlock-provider-redis-spring:5.16.0'
+
+    // Redisson: 스타터가 아닌 코어 라이브러리. 예약 과부하 제어 · 대기열 · 일정 캐시 락 전용 클라이언트로만 쓴다 (기존 Redis 연결은 그대로)
+    implementation 'org.redisson:redisson:4.8.0'
+
+    // Outbox CDC 모드(outbox.mode=cdc): Debezium이 Kafka로 보낸 좌석 반환 이벤트를 받아 Redis에 반영
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
 }
 
 tasks.named('test') {
